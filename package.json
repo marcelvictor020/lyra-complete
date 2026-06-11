@@ -1,0 +1,41 @@
+{
+  "name": "lyra-defi-copilot",
+  "version": "0.1.0",
+  "description": "AI-powered DeFi portfolio copilot on Mantle Network",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "build:wallet-modal": "esbuild wallet-modal-entry.js --bundle --format=esm --platform=browser --outfile=wallet-modal-bundle.js",
+    "test-wallet": "node src/test-wallet.js",
+    "test-prices": "node src/test-prices.js",
+    "test-ai": "node src/test-ai.js"
+  },
+  "keywords": [
+    "defi",
+    "mantle",
+    "ai",
+    "copilot"
+  ],
+  "author": "Marcel",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.0",
+    "@base-org/account": "^2.5.6",
+    "@metamask/connect-evm": "^1.4.0",
+    "@reown/appkit": "^1.8.20",
+    "@reown/appkit-adapter-wagmi": "^1.8.20",
+    "@walletconnect/ethereum-provider": "^2.23.9",
+    "axios": "^1.6.1",
+    "dotenv": "^16.3.1",
+    "ethers": "^6.11.0",
+    "porto": "^0.2.37",
+    "viem": "^2.51.3",
+    "wagmi": "^3.6.16"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "node": ">=18.0.0"
+  }
+}

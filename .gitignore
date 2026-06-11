@@ -1,0 +1,9 @@
+.env
+node_modules/
+*.log
+*.err
+*.out
+tmp-*
+dev-server.*
+prod-server.*
+server-direct.*
