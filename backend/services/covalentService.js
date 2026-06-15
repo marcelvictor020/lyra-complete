@@ -1,6 +1,9 @@
 import WalletHistory from '../../src/history.js';
 
-const DEFAULT_COVALENT_KEY = process.env.COVALENT_API_KEY || 'cqt_rQJ8DftWpfFpPM6btPj3cDGFDpWg';
+const DEFAULT_COVALENT_KEY =
+  process.env.GOLDRUSH_API_KEY ||
+  process.env.COVALENT_API_KEY ||
+  'cqt_rQJ8DftWpfFpPM6btPj3cDGFDpWg';
 
 const CHAIN_MATRIX = [
   { id: 'mantle-mainnet', label: 'Mantle' },

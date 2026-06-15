@@ -33,7 +33,7 @@ function titleCase(value = '') {
 
 export class WalletHistory {
   constructor(options = {}) {
-    this.apiKey = options.apiKey || process.env.COVALENT_API_KEY;
+    this.apiKey = options.apiKey || process.env.GOLDRUSH_API_KEY || process.env.COVALENT_API_KEY;
     this.chainName = options.chainName || process.env.COVALENT_CHAIN || DEFAULT_CHAIN;
   }
 

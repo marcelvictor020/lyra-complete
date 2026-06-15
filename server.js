@@ -1982,9 +1982,29 @@ async function buildDirectLyraResponse(message, snapshot, latestScan = null) {
   if (/^(hi|hello|hey|yo|gm|good morning|good afternoon|good evening)\b/i.test(lower)) {
     return {
       text: snapshot
-        ? 'Hello.\n\nWallet context is available. Ask for opportunities, wallet behavior, or prepare a bridge, swap, or send.'
-        : 'Hello.\n\nAsk about Mantle opportunities, protocol comparisons, or connect a wallet for wallet analysis and execution.',
+        ? 'Hey. Wallet context is live. Ask about opportunities, wallet behavior, or bridge, swap, and send support.'
+        : 'Hey. Ask about Mantle opportunities, protocol comparisons, or connect a wallet for wallet-aware answers.',
       reasoning: 'Greeting response.',
+      sources: [],
+      actions: []
+    };
+  }
+
+  if (/^(how are you|how are you doing|how's it going|hows it going|what's up|whats up)[\s!.?]*$/i.test(lower)) {
+    return {
+      text: snapshot
+        ? 'I am good. Wallet context is already loaded, so we can go straight into opportunities, comparisons, or execution prep.'
+        : 'I am good. We can go straight into Mantle opportunities, comparisons, or connect a wallet for a live read.',
+      reasoning: 'Fast casual response.',
+      sources: [],
+      actions: []
+    };
+  }
+
+  if (/^(thanks|thank you|nice|cool|great)[\s!.?]*$/i.test(lower)) {
+    return {
+      text: 'Anytime. Keep going.',
+      reasoning: 'Fast acknowledgement.',
       sources: [],
       actions: []
     };
@@ -1993,8 +2013,8 @@ async function buildDirectLyraResponse(message, snapshot, latestScan = null) {
   if (/^(what can you do|what do you do|who are you|tell me about lyra|introduce yourself|help|how does this work|how does lyra work|what is lyra|give me an overview|give me a quick intro)\b/i.test(lower)) {
     return {
       text: snapshot
-        ? 'LYRA compares Mantle opportunities, explains wallet activity in plain language, and prepares bridge, swap, or send flows when the action is supported.'
-        : 'LYRA compares Mantle opportunities, explains wallet activity in plain language, and prepares bridge, swap, or send flows when the action is supported. Connect a wallet for wallet-aware answers.',
+        ? 'LYRA ranks Mantle opportunities, explains wallet activity in plain language, and prepares bridge, swap, or send flows when the action is supported.'
+        : 'LYRA ranks Mantle opportunities, explains wallet activity in plain language, and prepares bridge, swap, or send flows when the action is supported. Connect a wallet for wallet-aware answers.',
       reasoning: 'Fast intro response.',
       sources: [],
       actions: [
@@ -2497,7 +2517,7 @@ async function handleChat(req, res) {
     }
 
     const classification = classifyLyraPrompt(message);
-    const fastPrompt = /^(hi|hey|hello|yo|gm|good morning|good afternoon|good evening|what can you do|what do you do|who are you|tell me about lyra|introduce yourself|help|how does this work|how does lyra work|what is lyra|give me an overview|give me a quick intro)[\s!.?]*$/i.test(message.trim())
+    const fastPrompt = /^(hi|hey|hello|yo|gm|good morning|good afternoon|good evening|how are you|how are you doing|how's it going|hows it going|what's up|whats up|thanks|thank you|nice|cool|great|what can you do|what do you do|who are you|tell me about lyra|introduce yourself|help|how does this work|how does lyra work|what is lyra|give me an overview|give me a quick intro)[\s!.?]*$/i.test(message.trim())
       || /bridge|swap|send|yield|apy|opportunit|compare|merchant|agni|lendle|idle|deploy/i.test(message);
     if (!walletAddress) {
       if (isWalletDependentIntent(classification)) {
@@ -2740,6 +2760,19 @@ async function handleScanWallet(req, res) {
     }
     if (walletAddress.toLowerCase() === ZERO_ADDRESS) {
       return sendJson(res, 400, { error: 'Zero address is not a valid wallet for analysis' });
+    }
+
+    const cachedScan = getLatestWalletScan(walletAddress);
+    if (cachedScan) {
+      const ageMs = Date.now() - new Date(cachedScan.createdAt).getTime();
+      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 5 * 60 * 1000) {
+        return sendJson(res, 200, {
+          walletAddress,
+          scannedAt: cachedScan.createdAt,
+          reused: true,
+          ...cachedScan
+        });
+      }
     }
 
     const analysis = await runWalletScan(walletAddress);
