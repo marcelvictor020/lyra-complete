@@ -1972,6 +1972,7 @@ class LYRAApp {
     this.updateWalletSummaryCard();
     this.renderStrategyLabState();
     this.renderAgentDecisionsPanel();
+    this.renderAgentReputationPanel();
   }
 
   renderWalletAnalysis() {
@@ -2552,6 +2553,7 @@ class LYRAApp {
       }
       if (!data.decisions.length) {
         panel.innerHTML = '<div class="console-row"><div><strong>No decisions recorded</strong><span>Trigger a scan or ask LYRA to investigate a wallet behavior first.</span></div><code>empty</code></div>';
+        this.renderAgentReputationPanel([]);
         return;
       }
       panel.innerHTML = data.decisions.slice(0, 8).map((decision) => `
@@ -2560,10 +2562,59 @@ class LYRAApp {
             <strong>${decision.prompt}</strong>
             <span>${decision.insight || decision.reasoning || 'Decision recorded.'}</span>
           </div>
-          <code>${decision.confidenceLabel || 'saved'}</code>
+          <code>${decision.confidenceLabel || decision.status || 'saved'}</code>
         </div>
       `).join('');
+      this.renderAgentReputationPanel(data.decisions);
     } catch (_) {}
+  }
+
+  renderAgentReputationPanel(decisions = null) {
+    const panel = document.getElementById('reputation-panel-list');
+    if (!panel) return;
+
+    const records = Array.isArray(decisions)
+      ? decisions
+      : [];
+    const decisionCount = records.length;
+    const completed = records.filter((item) => String(item.status || '').toLowerCase() === 'confirmed').length;
+    const withHashes = records.filter((item) => item.txHash).length;
+    const successRate = decisionCount ? `${Math.round((completed / decisionCount) * 100)}%` : '--';
+    const confidenceMix = records[0]?.confidenceLabel || (this.currentWalletAnalysis?.walletConfidence?.level || 'Pending');
+    const story = decisionCount
+      ? `LYRA has recorded ${decisionCount} wallet-aware decisions so far. ${withHashes} include an onchain transaction reference, and ${completed} are already marked confirmed.`
+      : 'LYRA starts building reputation only after it records real wallet-aware decisions and measurable outcomes.';
+
+    panel.innerHTML = `
+      <div class="console-row">
+        <div>
+          <strong>Recorded decisions</strong>
+          <span>${story}</span>
+        </div>
+        <code>${decisionCount}</code>
+      </div>
+      <div class="console-row">
+        <div>
+          <strong>Confirmation rate</strong>
+          <span>Only decisions with visible outcomes count toward reputation. Pending actions stay out of the success layer.</span>
+        </div>
+        <code>${successRate}</code>
+      </div>
+      <div class="console-row">
+        <div>
+          <strong>Evidence posture</strong>
+          <span>${this.currentWalletAnalysis?.walletConfidence?.message || 'Wallet history is still shaping how strong LYRA can be.'}</span>
+        </div>
+        <code>${confidenceMix}</code>
+      </div>
+      <div class="console-row">
+        <div>
+          <strong>Current read</strong>
+          <span>${decisionCount ? 'LYRA is now leaving a decision trail instead of acting like a stateless chatbot.' : 'The next confirmed wallet action will start the visible reputation trail.'}</span>
+        </div>
+        <code>${withHashes ? `${withHashes} tx` : 'warmup'}</code>
+      </div>
+    `;
   }
 
   async handleLyraAction(actionType, sourceEl = null) {
@@ -2672,6 +2723,13 @@ class LYRAApp {
 
     try {
       this.setExecutionFormBusy(form, true, actionType);
+      this.setSurfaceStatus(
+        actionType === 'send'
+          ? 'Preparing transfer...'
+          : actionType === 'bridge'
+            ? 'Preparing bridge route...'
+            : 'Preparing swap route...'
+      );
       this.setExecutionFormStatus(
         form,
         actionType === 'send'
@@ -2692,6 +2750,13 @@ class LYRAApp {
 
       this.setExecutionFormStatus(
         form,
+        actionType === 'send'
+          ? 'Waiting for wallet signature...'
+          : actionType === 'bridge'
+            ? 'Bridge route prepared. Waiting for wallet signature...'
+            : 'Swap route prepared. Waiting for wallet signature...'
+      );
+      this.setSurfaceStatus(
         actionType === 'send'
           ? 'Waiting for wallet signature...'
           : actionType === 'bridge'

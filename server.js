@@ -46,7 +46,7 @@ const alchemyService = new AlchemyService({
   apiKey: process.env.ALCHEMY_API_KEY || null
 });
 const covalentService = new CovalentService({
-  apiKey: process.env.COVALENT_API_KEY || null
+  apiKey: process.env.GOLDRUSH_API_KEY || process.env.COVALENT_API_KEY || null
 });
 const nansenService = new NansenService({
   apiKey: process.env.NANSEN_API_KEY || null
@@ -1606,16 +1606,34 @@ async function handleLiveOpportunities(req, res) {
     const payload = await buildLiveOpportunitiesPayload();
     return sendJson(res, 200, payload);
   } catch (error) {
+    const fallbackPools = buildFallbackMantlePools();
+    const fallbackCards = fallbackPools.slice(0, 4).map((pool, index) => ({
+      rank: index + 1,
+      ...mapOpportunityCard(pool, index === 0 ? 'overall' : index === 1 ? 'defensive' : index === 2 ? 'yield' : 'simple')
+    }));
     return sendJson(res, 200, {
-      ok: false,
+      ok: true,
       title: 'Live Opportunities',
-      summary: 'Live Mantle opportunity data is temporarily unavailable.',
+      summary: 'Live Mantle data is temporarily thin, so LYRA is falling back to a stable featured board instead of showing an empty state.',
       checkedAt: new Date().toISOString(),
       highlights: [],
-      cards: [],
-      methodology: [],
-      recommendation: null,
-      confidence: 'Live route scan unavailable',
+      cards: fallbackCards,
+      stats: {
+        visibleRoutes: fallbackPools.length,
+        mantleNativeRoutes: fallbackPools.filter((pool) => mantlePlacementLabel(pool) === 'Mantle-native').length,
+        availableRoutes: fallbackPools.filter((pool) => mantlePlacementLabel(pool) !== 'Mantle-native').length
+      },
+      methodology: [
+        'Fallback Mantle featured routes shown instead of blank space',
+        'Available on Mantle routes included',
+        'APY is annualized, not monthly',
+        'Action readiness kept separate from route quality'
+      ],
+      recommendation: fallbackCards[0] ? {
+        title: `${fallbackCards[0].protocol} is the strongest fallback route on Mantle right now.`,
+        copy: 'LYRA is preserving a readable board while live upstream data refreshes.'
+      } : null,
+      confidence: 'Fallback Mantle route board',
       sources: 'Sources: DefiLlama, protocol sources',
       error: error.message
     });
@@ -1816,12 +1834,25 @@ async function runWalletScan(walletAddress) {
     nansenService.isConfigured() && nansenHistory.transactionCount > 0,
     covalentChainActivity.length > 0
   );
+  if (analysis.historyCoverage === 'Limited' && Array.isArray(analysis.activeChains) && analysis.activeChains.length === 1) {
+    analysis.historyCoverage = `${analysis.activeChains[0]}-only`;
+  }
   analysis.observedSince = determineObservedSince(oldestActivityAt);
   analysis.lastAnalysisLabel = formatRelativeTime(new Date().toISOString());
   analysis.walletConfidence = analysis.walletConfidence || {};
   analysis.walletConfidence.historySource = nansenHistory.transactionCount > 0
     ? 'Alchemy + Nansen'
     : (covalentChainActivity.length ? 'Alchemy + GoldRush' : 'Alchemy');
+  if (
+    analysis.walletConfidence.level === 'LOW'
+    && Number(analysis.transactionCount || 0) >= 12
+    && Array.isArray(analysis.activeChains)
+    && analysis.activeChains.length === 1
+    && analysis.activeChains[0] === 'Mantle'
+  ) {
+    analysis.walletConfidence.level = 'MEDIUM';
+    analysis.walletConfidence.message = 'Mantle-only history is visible. Cross-chain expansion is currently unavailable, but Mantle activity is readable.';
+  }
   if (nansenHistory.transactionCount > Number(analysis.walletConfidence?.evidenceSignals?.transactionsObserved || 0)) {
     analysis.walletConfidence.percent = Math.min(
       100,
@@ -2765,7 +2796,14 @@ async function handleScanWallet(req, res) {
     const cachedScan = getLatestWalletScan(walletAddress);
     if (cachedScan) {
       const ageMs = Date.now() - new Date(cachedScan.createdAt).getTime();
-      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 5 * 60 * 1000) {
+      const cachedCoverage = String(cachedScan.historyCoverage || '').toLowerCase();
+      const cachedConfidence = String(cachedScan.walletConfidence?.level || '').toLowerCase();
+      const shouldReuseCachedScan = Number.isFinite(ageMs)
+        && ageMs >= 0
+        && ageMs < 5 * 60 * 1000
+        && cachedCoverage !== 'limited'
+        && cachedConfidence !== 'low';
+      if (shouldReuseCachedScan) {
         return sendJson(res, 200, {
           walletAddress,
           scannedAt: cachedScan.createdAt,

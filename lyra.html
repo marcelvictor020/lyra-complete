@@ -839,14 +839,17 @@
       width: 100%;
     }
     .settings-action-stack {
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 10px;
       margin-top: 12px;
+      width: 100%;
     }
     .settings-action-stack .app-btn {
       width: 100%;
       justify-content: center;
       min-height: 46px;
+      display: inline-flex;
     }
     .settings-action-stack .hidden {
       display: none !important;
@@ -1340,11 +1343,12 @@
       margin-bottom: 4px;
     }
     .profile-actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
+      display: grid;
+      gap: 14px;
       margin-top: 14px;
-    }    .stats {
+      width: 100%;
+    }
+    .stats {
       display: grid;
       grid-template-columns: repeat(3, minmax(0,1fr));
       gap: 10px;
@@ -7483,7 +7487,7 @@
             <div class="console-panel-view" data-view="reputation">
               <div class="console-panel-card">
                 <h3>Agent Reputation</h3>
-                <p>Verifiable performance and agent accountability for Mantle-native decisioning. This panel only grows when LYRA records outcomes that can be checked.</p>
+                <p>Verifiable performance and agent accountability for Mantle-native decisioning. This panel should explain what LYRA has actually recorded, not sit there like a placeholder.</p>
                 <div class="console-list" id="reputation-panel-list">
                   <div class="console-row"><div><strong>Verified decisions</strong><span>Recorded calls that reached a measurable outcome.</span></div><code>0</code></div>
                   <div class="console-row"><div><strong>Success rate</strong><span>Locked until LYRA has enough verified outcomes.</span></div><code>--</code></div>
