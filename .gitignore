@@ -9,3 +9,5 @@ dev-server.*
 prod-server.*
 server-direct.*
 backend/storage/
+
+.vercel
