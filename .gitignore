@@ -1,4 +1,5 @@
 .env
+.vercel
 node_modules/
 *.log
 *.err
@@ -7,3 +8,4 @@ tmp-*
 dev-server.*
 prod-server.*
 server-direct.*
+backend/storage/
