@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LYRA - AI Copilot for DeFi Decisions on Mantle</title>
+  <link rel="icon" type="image/png" href="./lyra-favicon-circle.png">
+  <link rel="apple-touch-icon" href="./lyra-favicon-circle.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@300;400;500&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,500;1,400;1,500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
@@ -722,10 +724,12 @@
       width: 100%;
     }
     .profile-connection-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr;
       gap: 14px;
       width: 100%;
       margin: 0 auto;
+      align-items: stretch;
     }
     .connection-chip {
       display: grid;
@@ -735,6 +739,32 @@
       min-width: 0;
       width: 100%;
       flex: 1 1 0;
+    }
+    .wallet-connection-chip {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: stretch;
+      width: 100%;
+      min-width: 0;
+    }
+    .wallet-connection-chip .mini-action {
+      min-width: 0;
+      flex: 1 1 auto;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      overflow-wrap: normal;
+      word-break: keep-all;
+      writing-mode: horizontal-tb;
+    }
+    #profile-connect-wallet-btn {
+      min-width: 0;
+    }
+    #profile-remove-wallet-btn {
+      min-width: 0;
+      writing-mode: horizontal-tb;
+      flex: 1 1 auto;
     }
     .chip-remove {
       width: 28px;
@@ -807,6 +837,19 @@
     }
     .connection-chip .mini-action {
       width: 100%;
+    }
+    .settings-action-stack {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .settings-action-stack .app-btn {
+      width: 100%;
+      justify-content: center;
+      min-height: 46px;
+    }
+    .settings-action-stack .hidden {
+      display: none !important;
     }
     #profile-logout-btn {
       width: min(220px, 100%);
@@ -994,6 +1037,9 @@
       width: max-content;
       gap: 12px;
       animation: liveTape 26s linear infinite;
+      will-change: transform;
+      backface-visibility: hidden;
+      transform: translateZ(0);
     }
     .tape-item {
       display: inline-flex;
@@ -2897,6 +2943,854 @@
       letter-spacing: 0.12em;
       text-transform: uppercase;
     }
+    .opportunity-empty-state {
+      display: grid;
+      gap: 8px;
+      padding: 10px 0 2px;
+    }
+    .opportunity-empty-state strong {
+      color: #f3fbf7;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+    }
+    .opportunity-empty-state p {
+      margin: 0;
+      color: rgba(207,220,214,0.72);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+    .opportunity-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .opportunity-summary-card {
+      border: 1px solid rgba(255,255,255,0.07);
+      background: linear-gradient(180deg, rgba(15,20,31,0.96), rgba(10,15,23,0.98));
+      border-radius: 18px;
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .opportunity-summary-card strong {
+      color: #f4fbf7;
+      font-size: 16px;
+      line-height: 1.24;
+      letter-spacing: -0.03em;
+    }
+    .opportunity-summary-card strong em {
+      color: rgba(198,214,208,0.74);
+      font-style: normal;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .opportunity-summary-card p {
+      margin: 0;
+      color: rgba(204,218,212,0.74);
+      font-size: 12px;
+      line-height: 1.58;
+    }
+    .opportunity-summary-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .opportunity-summary-metrics div {
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.025);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: grid;
+      gap: 4px;
+    }
+    .opportunity-summary-metrics span,
+    .opportunity-route-stats span {
+      color: rgba(160,184,174,0.68);
+      font-family: "DM Mono", "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .opportunity-summary-metrics strong,
+    .opportunity-route-stats strong {
+      color: #f4fbf7;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+    .opportunity-board-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .opportunity-route-stack,
+    .opportunity-side-stack {
+      display: grid;
+      gap: 14px;
+    }
+    .opportunity-route-card,
+    .opportunity-method-card,
+    .opportunity-verdict-card {
+      border: 1px solid rgba(255,255,255,0.07);
+      background: linear-gradient(180deg, rgba(14,19,29,0.96), rgba(10,15,24,0.98));
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .opportunity-route-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .opportunity-route-rank {
+      color: #14e6a4;
+      font-family: "DM Mono", "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .opportunity-route-title {
+      color: #f7fcf9;
+      font-size: 19px;
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .opportunity-route-title span {
+      color: rgba(198,214,208,0.76);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-left: 4px;
+    }
+    .opportunity-route-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .opportunity-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(20,230,164,0.18);
+      background: rgba(20,230,164,0.08);
+      color: #ddfff3;
+      font-family: "DM Mono", "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .opportunity-badge.muted {
+      border-color: rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: rgba(218,228,223,0.80);
+    }
+    .opportunity-route-stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(104px, 1fr));
+      gap: 10px;
+      min-width: 228px;
+    }
+    .opportunity-route-stats div {
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.025);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: grid;
+      gap: 4px;
+    }
+    .opportunity-route-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .opportunity-route-panel {
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.02);
+      border-radius: 14px;
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+    }
+    .opportunity-route-panel strong,
+    .opportunity-method-card strong,
+    .opportunity-verdict-card strong {
+      color: #f4fbf7;
+      font-size: 15px;
+      line-height: 1.35;
+      letter-spacing: -0.02em;
+    }
+    .opportunity-route-panel p,
+    .opportunity-method-card p,
+    .opportunity-verdict-card p {
+      margin: 0;
+      color: rgba(204,218,212,0.74);
+      font-size: 12px;
+      line-height: 1.62;
+    }
+    .opportunity-source-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .opportunity-placement-note {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.025);
+      display: grid;
+      gap: 6px;
+    }
+    .opportunity-placement-note p {
+      margin: 0;
+      color: rgba(204,218,212,0.74);
+      font-size: 12px;
+      line-height: 1.62;
+    }
+    .opportunity-source-link {
+      color: rgba(205,233,223,0.88);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(20,230,164,0.18);
+      padding-bottom: 2px;
+    }
+    .opportunity-source-link:hover {
+      color: #ebfff8;
+      border-color: rgba(20,230,164,0.32);
+    }
+    .opportunity-method-card ul {
+      margin: 2px 0 0;
+      padding-left: 18px;
+      color: rgba(204,218,212,0.74);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .lyra-main-console[data-view="opportunities"] .console-topbar {
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 18px 28px 14px;
+      gap: 18px;
+      min-height: 92px;
+    }
+    .lyra-main-console[data-view="opportunities"] .console-topbar-center {
+      display: grid;
+      justify-items: start;
+      gap: 6px;
+      text-align: left;
+      max-width: 760px;
+      margin: 0;
+    }
+    .lyra-main-console[data-view="opportunities"] .agent-name {
+      font-size: clamp(1.7rem, 3vw, 2.35rem);
+      line-height: 1;
+      letter-spacing: -0.065em;
+      margin: 0;
+      max-width: none;
+    }
+    .lyra-main-console[data-view="opportunities"] .agent-sub {
+      margin: 0;
+      max-width: none;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      color: rgba(171,197,186,0.72);
+      text-align: left;
+    }
+    .lyra-main-console[data-view="opportunities"] .console-status {
+      position: static;
+      transform: none;
+      margin-left: auto;
+      gap: 10px;
+      padding-top: 2px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .lyra-main-console[data-view="opportunities"] .console-panel-view[data-view="opportunities"] {
+      width: min(1180px, calc(100% - 44px));
+      margin-top: 8px;
+    }
+    .lyra-main-console[data-view="opportunities"] .console-panel-card {
+      padding: 22px;
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at top right, rgba(0,230,150,0.05), transparent 26%),
+        linear-gradient(180deg, rgba(11,16,24,0.96), rgba(9,13,21,0.98));
+    }
+    .strategy-lab-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 18px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .strategy-lab-top h3 {
+      display: none;
+    }
+    .strategy-lab-top p {
+      max-width: 760px;
+      margin: 0;
+      color: rgba(209,220,215,0.74);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+    .strategy-brief-row {
+      display: none;
+    }
+    .strategy-result-card {
+      gap: 18px;
+      border-radius: 22px;
+      padding: 22px;
+    }
+    .strategy-result-head strong {
+      font-size: 30px;
+      line-height: 1.04;
+    }
+    .opportunities-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1.62fr) 318px;
+      gap: 18px;
+      align-items: start;
+    }
+    .opportunities-main {
+      display: grid;
+      gap: 16px;
+      min-width: 0;
+    }
+    .opportunities-route-span {
+      grid-column: 1 / -1;
+      min-width: 0;
+    }
+    .opportunity-route-section {
+      display: grid !important;
+      gap: 14px;
+      visibility: visible !important;
+      opacity: 1 !important;
+      position: relative;
+      z-index: 2;
+    }
+    .opportunity-route-section-head {
+      display: grid;
+      gap: 6px;
+      padding: 0 2px;
+    }
+    .opportunity-route-section-head strong {
+      color: #f5fbf8;
+      font-size: 18px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+    .opportunity-footer-strip {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    .opportunity-footer-card {
+      border: 1px solid rgba(255,255,255,0.06);
+      background: linear-gradient(180deg, rgba(12,18,27,0.98), rgba(10,15,24,1));
+      border-radius: 18px;
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+    }
+    .opportunity-board-stats {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      width: 100%;
+    }
+    .opportunity-board-stat {
+      border: 1px solid rgba(255,255,255,0.06);
+      background: linear-gradient(180deg, rgba(13,18,28,0.98), rgba(10,14,22,0.99));
+      border-radius: 18px;
+      padding: 14px 16px;
+      display: grid;
+      gap: 8px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .opportunity-board-stat strong {
+      color: #f7fcf9;
+      font-size: 22px;
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+    .opportunity-priority-grid {
+      display: none;
+    }
+    .opportunity-summary-column {
+      display: none;
+    }
+    .opportunity-route-stack {
+      display: grid !important;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      width: 100%;
+      visibility: visible !important;
+    }
+    .opportunity-secondary-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .opportunity-feature-card {
+      border: 1px solid rgba(20,230,164,0.18);
+      background:
+        radial-gradient(circle at top right, rgba(0,230,150,0.12), transparent 38%),
+        linear-gradient(180deg, rgba(11,32,28,0.98), rgba(9,18,21,0.99));
+      border-radius: 22px;
+      padding: 20px 20px 18px;
+      display: grid;
+      gap: 12px;
+      min-height: 100%;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 20px 44px rgba(0,0,0,0.22);
+    }
+    .opportunity-feature-kicker {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .opportunity-feature-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.07);
+      color: rgba(232,240,236,0.84);
+      font-family: "DM Mono", "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .opportunity-feature-card strong {
+      color: #f7fcf9;
+      font-size: 28px;
+      line-height: 0.98;
+      letter-spacing: -0.06em;
+    }
+    .opportunity-feature-card strong em {
+      display: inline-block;
+      margin-left: 6px;
+      color: rgba(188,214,204,0.74);
+      font-style: normal;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .opportunity-feature-card p {
+      margin: 0;
+      color: rgba(208,221,215,0.78);
+      font-size: 14px;
+      line-height: 1.75;
+      max-width: 44ch;
+    }
+    .opportunity-feature-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: auto;
+    }
+    .opportunity-feature-metrics div {
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.03);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: grid;
+      gap: 4px;
+    }
+    .opportunity-feature-metrics span {
+      color: rgba(170,194,184,0.68);
+      font-family: "DM Mono", "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .opportunity-feature-metrics strong {
+      font-size: 18px;
+      line-height: 1.15;
+    }
+    .opportunity-summary-card {
+      background: linear-gradient(180deg, rgba(13,18,28,0.98), rgba(10,14,22,0.99));
+      padding: 16px 16px 14px;
+      gap: 9px;
+    }
+    .opportunity-summary-card strong {
+      font-size: 20px;
+      line-height: 1.08;
+    }
+    .opportunity-summary-card p {
+      display: none;
+    }
+    .opportunity-route-card,
+    .opportunity-method-card,
+    .opportunity-verdict-card {
+      border-radius: 20px;
+      padding: 18px;
+    }
+    .opportunity-route-card.hero {
+      width: 100%;
+      display: block !important;
+      visibility: visible !important;
+      overflow: visible;
+    }
+    .opportunity-route-card.secondary {
+      min-height: 100%;
+      display: block;
+    }
+    .opportunity-route-title {
+      font-size: 22px;
+    }
+    .opportunity-route-head-main {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+    .opportunity-route-grid-wide {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .opportunity-route-footer {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .opportunity-route-footer-line {
+      display: grid;
+      gap: 6px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.025);
+    }
+    .opportunity-route-footer-line strong {
+      color: #eef9f4;
+      font-size: 13px;
+      line-height: 1.5;
+      letter-spacing: -0.01em;
+    }
+    .route-list-shell {
+      display: grid;
+      gap: 14px;
+      width: 100%;
+    }
+    .route-list-headline {
+      display: grid;
+      gap: 6px;
+      padding: 0 2px;
+    }
+    .route-list-headline strong {
+      color: #f5fbf8;
+      font-size: 18px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+    .opportunity-route-intro {
+      color: rgba(208, 224, 216, 0.76);
+      font-size: 12px;
+      line-height: 1.55;
+      padding: 0 2px;
+    }
+    .route-list-wrap {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      width: 100%;
+      align-items: start;
+    }
+    .route-list-secondary-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      width: 100%;
+      align-items: start;
+    }
+    .route-list-row {
+      border: 1px solid rgba(255,255,255,0.07);
+      background: linear-gradient(180deg, rgba(14,19,29,0.96), rgba(10,15,24,0.98));
+      border-radius: 20px;
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+      width: 100%;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .route-list-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 16px;
+    }
+    .route-list-title {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+    .route-list-title strong {
+      color: #f7fcf9;
+      font-size: 22px;
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+    }
+    .route-list-title strong span {
+      color: rgba(198,214,208,0.76);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-left: 4px;
+    }
+    .route-list-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .route-list-tags span,
+    .route-list-metrics span {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: rgba(218,228,223,0.80);
+      font-family: "DM Mono", "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .route-list-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(112px, 1fr));
+      gap: 10px;
+      min-width: 248px;
+    }
+    .route-list-cell {
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.025);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: grid;
+      gap: 6px;
+    }
+    .route-list-cell strong {
+      color: #f4fbf7;
+      font-size: 15px;
+      line-height: 1.35;
+      letter-spacing: -0.02em;
+    }
+    .route-list-cell p {
+      margin: 0;
+      color: rgba(204,218,212,0.74);
+      font-size: 12px;
+      line-height: 1.62;
+    }
+    .route-list-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .route-list-foot {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: stretch;
+    }
+    .route-list-row-secondary .route-list-head {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+    }
+    .route-list-row-secondary .route-list-metrics {
+      min-width: 248px;
+      width: auto;
+      grid-template-columns: repeat(2, minmax(112px, 1fr));
+    }
+    .route-list-row-secondary .route-list-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .route-list-row-secondary .route-list-foot {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .route-list-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 14px;
+      border-radius: 14px;
+      text-decoration: none;
+      color: #ebfff8;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid rgba(20,230,164,0.20);
+      background: linear-gradient(180deg, rgba(16,88,68,0.92), rgba(10,58,45,0.96));
+    }
+    @media (max-width: 980px) {
+      .route-list-secondary-grid,
+      .route-list-head,
+      .route-list-grid,
+      .route-list-foot {
+        grid-template-columns: 1fr;
+      }
+      .route-list-metrics {
+        min-width: 0;
+        width: 100%;
+      }
+    }
+    .opportunity-source-row {
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .opportunity-signal-rail {
+      border: 1px solid rgba(255,255,255,0.07);
+      background:
+        radial-gradient(circle at top right, rgba(0,230,150,0.08), transparent 34%),
+        linear-gradient(180deg, rgba(12,18,28,0.98), rgba(9,14,22,0.99));
+      border-radius: 20px;
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .opportunity-signal-head {
+      display: grid;
+      gap: 6px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .opportunity-signal-head strong {
+      color: #f5fbf8;
+      font-size: 16px;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+    .opportunity-signal-card {
+      display: grid;
+      grid-template-columns: 12px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 12px 12px 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.024);
+    }
+    .opportunity-signal-card.primary {
+      background: linear-gradient(180deg, rgba(11,32,28,0.92), rgba(8,20,18,0.96));
+      border-color: rgba(20,230,164,0.18);
+    }
+    .opportunity-signal-copy {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .opportunity-signal-copy .strategy-section-label {
+      color: rgba(188,212,202,0.82);
+    }
+    .opportunity-signal-card strong {
+      font-size: 12px;
+      line-height: 1.45;
+      letter-spacing: -0.01em;
+      color: rgba(211,225,219,0.76);
+    }
+    .opportunity-signal-value {
+      justify-self: end;
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(20,230,164,0.22);
+      background: rgba(20,230,164,0.08);
+      box-shadow: 0 0 0 1px rgba(20,230,164,0.05), 0 0 18px rgba(20,230,164,0.10);
+    }
+    .opportunity-signal-value span {
+      color: #defff4;
+      font-family: "DM Mono", "JetBrains Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .opportunity-signal-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      margin-top: 5px;
+      background: rgba(255,255,255,0.32);
+    }
+    .opportunity-signal-dot.positive {
+      background: #00e696;
+      box-shadow: 0 0 14px rgba(0,230,150,0.52);
+    }
+    .opportunity-signal-dot.negative {
+      background: #ff7878;
+      box-shadow: 0 0 14px rgba(255,120,120,0.42);
+    }
+    .opportunity-signal-dot.neutral {
+      background: #14e6a4;
+      box-shadow: 0 0 14px rgba(20,230,164,0.36);
+    }
+    .opportunity-signal-card.value-primary .opportunity-signal-copy strong {
+      display: none;
+    }
+    .opportunity-signal-empty {
+      display: grid;
+      gap: 8px;
+      padding: 6px 2px 2px;
+    }
+    .opportunity-signal-empty strong {
+      color: #effaf5;
+      font-size: 14px;
+      letter-spacing: -0.02em;
+    }
+    .opportunity-signal-empty p {
+      margin: 0;
+      color: rgba(204,218,212,0.72);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    @media (max-width: 1120px) {
+      .opportunities-shell,
+      .opportunity-priority-grid,
+      .opportunity-route-grid,
+      .opportunity-board-stats,
+      .opportunity-footer-strip,
+      .opportunity-secondary-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 760px) {
+      .lyra-main-console[data-view="opportunities"] .console-topbar {
+        padding-right: 18px;
+      }
+      .lyra-main-console[data-view="opportunities"] .console-status {
+        width: 100%;
+        margin-left: 0;
+        justify-content: flex-start;
+      }
+      .strategy-lab-top,
+      .opportunity-route-grid {
+        grid-template-columns: 1fr;
+      }
+      .opportunity-route-head {
+        flex-direction: column;
+      }
+      .opportunity-route-stats {
+        width: 100%;
+        min-width: 0;
+      }
+    }
     .strategy-player-shell {
       display: grid;
       gap: 16px;
@@ -4674,7 +5568,7 @@
     }
     .console-topbar {
       padding: 18px 28px 12px;
-      justify-content: center;
+      justify-content: flex-start;
       border-bottom: 0;
       background: transparent;
       position: relative;
@@ -4684,9 +5578,9 @@
     }
     .console-topbar-center {
       display: grid;
-      justify-items: center;
+      justify-items: start;
       gap: 4px;
-      text-align: center;
+      text-align: left;
     }
     .console-topbar-center .agent-name {
       font-size: 44px;
@@ -4822,24 +5716,27 @@
       flex: 1;
     }
     .ask-workspace-shell {
-      min-height: 520px;
-      border-radius: 20px;
+      min-height: 540px;
+      border-radius: 22px;
       border: 1px solid rgba(255,255,255,0.06);
-      background: linear-gradient(180deg, rgba(11,16,24,0.96), rgba(9,14,22,0.96));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+      background:
+        radial-gradient(circle at top right, rgba(20,230,164,0.10), transparent 24%),
+        radial-gradient(circle at 18% 18%, rgba(67,255,215,0.06), transparent 22%),
+        linear-gradient(180deg, rgba(10,16,24,0.98), rgba(8,13,21,0.98));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 18px 38px rgba(0,0,0,0.18);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      padding: 22px 22px 14px;
+      padding: 24px 24px 16px;
     }
     .visible-thread {
       display: flex;
       flex-direction: column;
-      gap: 14px;
-      min-height: 340px;
-      max-height: 340px;
+      gap: 16px;
+      min-height: 382px;
+      max-height: 382px;
       overflow-y: auto;
-      padding-right: 6px;
+      padding-right: 8px;
     }
     .visible-thread::-webkit-scrollbar {
       width: 5px;
@@ -4852,8 +5749,8 @@
       border: 0;
       background: transparent;
       box-shadow: none;
-      width: min(780px, 100%);
-      max-width: 780px;
+      width: min(820px, 100%);
+      max-width: 820px;
       margin: 0;
       padding: 0;
       text-align: left;
@@ -4861,7 +5758,7 @@
     }
     .workspace-intro-head {
       justify-content: flex-start;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .workspace-intro-logo {
       display: none;
@@ -4870,25 +5767,40 @@
       display: none;
     }
     .workspace-intro h3 {
-      font-size: 14px;
+      font-size: 16px;
       font-weight: 600;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.03em;
       color: #f7fbff;
       margin: 0;
     }
     .workspace-intro p {
-      max-width: 660px;
-      margin: 6px 0 0;
-      font-size: 11px;
+      max-width: 680px;
+      margin: 4px 0 0;
+      font-size: 12px;
       line-height: 1.6;
-      color: rgba(204,216,224,0.78);
+      color: rgba(204,216,224,0.80);
+    }
+    .workspace-cursor {
+      display: inline-block;
+      width: 9px;
+      height: 1.05em;
+      margin-left: 8px;
+      border-radius: 999px;
+      vertical-align: -0.12em;
+      background: linear-gradient(180deg, rgba(28,236,169,0.9), rgba(19,216,151,0.55));
+      animation: workspaceCursor 1s steps(1) infinite;
+      box-shadow: 0 0 16px rgba(20,230,164,0.28);
+    }
+    @keyframes workspaceCursor {
+      0%, 48% { opacity: 1; }
+      49%, 100% { opacity: 0.18; }
     }
     .workspace-start-label {
       display: flex;
       align-items: center;
       justify-content: flex-start;
       gap: 14px;
-      margin: 14px 0 10px;
+      margin: 18px 0 12px;
       color: rgba(171,197,186,0.72);
       font-family: "DM Mono", "JetBrains Mono", monospace;
       font-size: 10px;
@@ -4904,46 +5816,59 @@
     }
     .workspace-prompt-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 8px;
-      width: min(640px, 100%);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      width: min(980px, 100%);
       margin: 0;
       justify-items: stretch;
     }
     .workspace-prompt {
-      min-height: 40px;
-      padding: 8px 14px;
-      border-radius: 12px;
+      min-height: 58px;
+      padding: 0 16px;
+      border-radius: 14px;
       display: grid;
-      grid-template-columns: 22px 1fr 14px;
+      grid-template-columns: 18px minmax(0, 1fr) 14px;
       align-items: center;
-      gap: 8px;
+      column-gap: 10px;
+      row-gap: 0;
       text-align: left;
       border: 1px solid rgba(255,255,255,0.07);
-      background: linear-gradient(180deg, rgba(16,21,31,0.92), rgba(13,18,27,0.94));
+      background: linear-gradient(180deg, rgba(15,21,31,0.94), rgba(11,17,26,0.98));
       color: #eef7f3;
       font-size: 12px;
       font-weight: 500;
       line-height: 1.35;
+      transition: border-color 180ms ease, background 180ms ease, transform 180ms ease, box-shadow 180ms ease;
     }
     .workspace-prompt::before {
       content: "↗";
       color: #14e6a4;
-      font-size: 15px;
+      font-size: 14px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      grid-column: 1;
+      padding-top: 0;
     }
     .workspace-prompt::after {
       content: "›";
       color: rgba(214,225,231,0.72);
-      font-size: 18px;
+      font-size: 16px;
+      grid-column: 3;
       justify-self: end;
+      align-self: center;
     }
     .workspace-prompt:hover {
-      transform: none;
+      transform: translateY(-1px);
+      border-color: rgba(20,230,164,0.24);
+      background: linear-gradient(180deg, rgba(18,26,38,0.96), rgba(14,21,31,0.98));
+      box-shadow: 0 12px 24px rgba(0,0,0,0.18);
+    }
+    .workspace-prompt.featured {
+      background:
+        radial-gradient(circle at right top, rgba(20,230,164,0.10), transparent 32%),
+        linear-gradient(180deg, rgba(13,31,26,0.96), rgba(10,19,22,0.98));
       border-color: rgba(20,230,164,0.22);
-      background: linear-gradient(180deg, rgba(18,26,38,0.94), rgba(15,22,31,0.96));
     }
     .chat-msg {
       max-width: min(760px, calc(100% - 52px));
@@ -4989,7 +5914,7 @@
     }
     .chat-bubble.lyra-rich-bubble {
       white-space: normal;
-      padding: 14px 16px 15px;
+      padding: 16px 18px 18px;
       overflow-x: hidden;
     }
     .lyra-rich-response {
@@ -5028,6 +5953,51 @@
       font-size: 13px;
       line-height: 1.66;
     }
+    .lyra-rich-hero {
+      border: 1px solid rgba(20,230,164,0.14);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(10,41,34,0.58), rgba(10,22,24,0.52));
+      color: #f4fbf8;
+      padding: 14px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.55;
+    }
+    .lyra-compare-grid,
+    .lyra-plan-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      min-width: 0;
+    }
+    .lyra-compare-card,
+    .lyra-plan-card {
+      border: 1px solid rgba(255,255,255,0.06);
+      background: linear-gradient(180deg, rgba(16,23,33,0.96), rgba(12,18,28,0.98));
+      border-radius: 14px;
+      padding: 12px 13px;
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+    .lyra-compare-title {
+      color: #f7fbff;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+    .lyra-compare-copy {
+      color: rgba(221,233,239,0.82);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .lyra-compare-points {
+      display: grid;
+      gap: 6px;
+      color: #e7f4ee;
+      font-size: 12px;
+      line-height: 1.55;
+    }
     .lyra-protocol-list {
       display: grid;
       gap: 10px;
@@ -5057,6 +6027,9 @@
       display: grid;
       gap: 12px;
       min-width: 0;
+    }
+    .lyra-exec-form.is-submitting {
+      opacity: 0.96;
     }
     .lyra-exec-grid {
       display: grid;
@@ -5097,6 +6070,47 @@
     .lyra-exec-select:focus {
       border-color: rgba(20,230,164,0.34);
       background: rgba(20,230,164,0.05);
+    }
+    .lyra-exec-inline-status {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      border: 1px solid rgba(20,230,164,0.16);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(10,40,33,0.54), rgba(9,19,22,0.76));
+      color: #e9fbf4;
+      padding: 11px 13px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .lyra-exec-inline-status.visible {
+      display: flex;
+    }
+    .lyra-exec-inline-status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #19e6a4;
+      box-shadow: 0 0 0 0 rgba(25, 230, 164, 0.42);
+      animation: lyraStatusPulse 1.15s ease-in-out infinite;
+      flex: 0 0 8px;
+    }
+    .lyra-exec-inline-status.error {
+      border-color: rgba(255, 112, 120, 0.18);
+      background: linear-gradient(180deg, rgba(53,18,24,0.62), rgba(25,14,18,0.82));
+      color: #ffe8eb;
+    }
+    .lyra-exec-inline-status.error::before {
+      background: #ff7e87;
+      animation: none;
+      box-shadow: none;
+    }
+    @keyframes lyraStatusPulse {
+      0% { box-shadow: 0 0 0 0 rgba(25, 230, 164, 0.42); }
+      70% { box-shadow: 0 0 0 8px rgba(25, 230, 164, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(25, 230, 164, 0); }
     }
     .lyra-exec-summary-grid {
       display: grid;
@@ -5234,6 +6248,30 @@
       background: linear-gradient(180deg, rgba(11,68,51,0.90), rgba(10,51,39,0.94));
       border-color: rgba(20,230,164,0.26);
     }
+    .chat-image-bubble {
+      padding: 10px;
+      background: linear-gradient(180deg, rgba(12,49,39,0.90), rgba(10,39,31,0.96));
+    }
+    .chat-image-shell {
+      display: grid;
+      gap: 8px;
+      max-width: 280px;
+    }
+    .chat-image-shell img {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      display: block;
+      object-fit: cover;
+      background: rgba(255,255,255,0.03);
+    }
+    .chat-image-meta {
+      color: rgba(226,240,234,0.72);
+      font-family: "DM Mono", "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      overflow-wrap: anywhere;
+    }
     .assistant-thinking {
       display: inline-flex;
       align-items: center;
@@ -5275,31 +6313,51 @@
     .agent-composer {
       width: 100%;
       margin: 0;
-      border-radius: 16px;
+      border-radius: 18px;
       border: 1px solid rgba(255,255,255,0.07);
-      background: linear-gradient(180deg, rgba(12,18,27,0.96), rgba(10,15,24,0.98));
-      padding: 0 0 0 12px;
+      background: linear-gradient(180deg, rgba(12,18,27,0.98), rgba(10,15,24,1));
+      padding: 0 0 0 14px;
       display: grid;
-      grid-template-columns: 24px 1fr 48px;
+      grid-template-columns: 38px 1fr 48px;
       align-items: center;
-      gap: 10px;
-      min-height: 60px;
+      gap: 12px;
+      min-height: 68px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
     }
     .composer-attach {
-      color: rgba(214,224,231,0.72);
-      font-size: 16px;
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: rgba(226,236,243,0.86);
+      font-size: 18px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      cursor: pointer;
+      transition: border-color 180ms ease, background 180ms ease, color 180ms ease, transform 180ms ease;
+    }
+    .composer-attach:hover {
+      border-color: rgba(20,230,164,0.26);
+      background: rgba(20,230,164,0.10);
+      color: #f7fffc;
+      transform: translateY(-1px);
+    }
+    .composer-attach.attached {
+      border-color: rgba(20,230,164,0.30);
+      background: rgba(20,230,164,0.14);
+      color: #14e6a4;
+      box-shadow: 0 0 16px rgba(20,230,164,0.16);
     }
     .agent-composer textarea {
-      min-height: 24px;
+      min-height: 28px;
       max-height: 120px;
       padding: 0;
       background: transparent;
       color: #f4faf7;
-      font-size: 13px;
-      line-height: 1.5;
+      font-size: 14px;
+      line-height: 1.6;
     }
     .agent-composer textarea::placeholder {
       color: rgba(179,193,202,0.58);
@@ -5324,6 +6382,20 @@
       border: 0;
       font-size: 18px;
       box-shadow: 0 0 24px rgba(20,230,164,0.24);
+    }
+    @media (max-width: 900px) {
+      .workspace-prompt-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .lyra-compare-grid,
+      .lyra-plan-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+    @media (max-width: 640px) {
+      .workspace-prompt-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
     .console-panel-view[data-view="opportunities"],
     .console-panel-view[data-view="decisions"],
@@ -6157,7 +7229,7 @@
           </div>
           <div class="profile-actions">
             <div class="profile-connection-row">
-              <div class="connection-chip">
+              <div class="connection-chip wallet-connection-chip">
                 <button class="mini-action" id="profile-connect-wallet-btn" type="button" onclick="window.lyraConnectWalletFromProfile()">Connect Wallet</button>
                 <button class="mini-action hidden" id="profile-remove-wallet-btn" type="button" onclick="window.lyraRemoveWallet()">Disconnect</button>
               </div>
@@ -6176,11 +7248,11 @@
     </div>
     <nav class="navbar">
       <div class="nav-brand">
-        <div class="nav-mark"><img src="./lyra-logo-mark.png" alt="LYRA"></div>
+        <div class="nav-mark"><img src="./lyra-logo-robot.png" alt="LYRA"></div>
         <span>LYRA</span>
       </div>
       <div class="nav-links mini-card">
-        <button type="button" onclick="window.lyraEnterApp()">Platform</button>
+        <button type="button" onclick="window.open('https://www.mantle.xyz/','_blank','noopener,noreferrer')">Platform</button>
         <a class="faucet-link" href="https://faucet.sepolia.mantle.xyz/" target="_blank" rel="noreferrer">Get Faucet</a>
         <a href="https://docs.mantle.xyz/" target="_blank" rel="noreferrer">Docs</a>
       </div>
@@ -6262,7 +7334,7 @@
       <div class="app-stage">
         <div class="app-header">
           <div class="nav-brand">
-            <div class="nav-mark"><img src="./lyra-logo-mark.png" alt="LYRA"></div>
+            <div class="nav-mark"><img src="./lyra-logo-robot.png" alt="LYRA"></div>
             <span>LYRA</span>
           </div>
           <div class="app-header-actions"></div>
@@ -6271,12 +7343,12 @@
           <aside class="agent-sidebar" aria-label="LYRA navigation">
             <div class="agent-side-top">
               <div class="agent-side-brand">
-                <div class="nav-mark"><img src="./lyra-logo-mark.png" alt="LYRA"></div>
+                <div class="nav-mark"><img src="./lyra-logo-robot.png" alt="LYRA"></div>
                 <span>LYRA</span>
               </div>
               <div class="agent-side-nav">
                 <button class="nav-item active" data-panel="overview" type="button">Ask LYRA</button>
-                <button class="nav-item" data-panel="opportunities" type="button">Strategy Lab</button>
+                <button class="nav-item" data-panel="opportunities" type="button">Live Opportunities</button>
                 <button class="nav-item" data-panel="decisions" type="button">Agent Decisions</button>
                 <button class="nav-item" data-panel="reputation" type="button">Agent Reputation</button>
                 <button class="nav-item" data-panel="settings" type="button">Settings</button>
@@ -6302,7 +7374,7 @@
               </div>
               <div class="console-status">
                 <span class="status-pill">Live</span>
-                <span class="net-badge" id="mode-pill">Mantle Sepolia</span>
+                <span class="net-badge" id="mode-pill">Mantle Network</span>
                 <button class="back-btn" id="back-btn" type="button" onclick="window.lyraExitApp()">Back</button>
               </div>
             </div>
@@ -6310,7 +7382,7 @@
             <div class="wallet-summary-card">
               <div class="wallet-summary-item">
                 <div class="wallet-summary-label">Primary Network</div>
-                <strong id="summary-primary-network">Mantle</strong>
+                <strong id="summary-primary-network">Mantle Network</strong>
               </div>
               <div class="wallet-summary-item">
                 <div class="wallet-summary-label">Confidence</div>
@@ -6332,7 +7404,8 @@
                 <div class="visible-thread" id="chat-thread"></div>
                 <div class="agent-connect-strip"><span>Connect a wallet to begin live analysis.</span></div>
                 <div class="agent-composer">
-                  <div class="composer-attach">◷</div>
+                  <input id="chat-image-input" type="file" accept="image/*" hidden>
+                  <button class="composer-attach" id="chat-attach-btn" type="button" aria-label="Upload image">+</button>
                   <textarea id="chat-input" placeholder="Ask anything about Mantle, DeFi, or your wallet..."></textarea>
                   <div class="agent-composer-row">
                   <div class="agent-composer-hint">Connect a wallet to begin live analysis.</div>
@@ -6347,51 +7420,50 @@
                 <div class="strategy-lab-shell" data-strategy-lab>
                   <div class="strategy-lab-top">
                     <div>
-                      <div class="strategy-lab-kicker">Live Mantle Research</div>
-                      <h3>Strategy Lab</h3>
-                      <p>Use one flagship comparison to turn a Mantle tradeoff into a readable decision brief with live links and clearer evidence.</p>
+                      <div class="strategy-lab-kicker">Mantle Intelligence Board</div>
+                      <p>Scan the strongest visible Mantle routes, understand why they rank where they do, and see what LYRA can help prepare next.</p>
                     </div>
                     <div class="strategy-lab-top-actions">
-                      <button class="strategy-action-btn primary" type="button" data-strategy-generate>Run Live Comparison</button>
+                      <button class="strategy-action-btn primary" type="button" data-strategy-generate>Refresh Live Board</button>
                     </div>
                   </div>
 
                   <div class="strategy-brief-row">
                     <article class="strategy-brief-card active">
-                      <span class="scenario-label">Flagship Compare</span>
-                      <strong>mETH vs USDY on Mantle.</strong>
-                      <em>Defensive capital posture with live links and a clear tradeoff.</em>
+                      <span class="scenario-label">What this tab does</span>
+                      <strong>Ranks live Mantle opportunities.</strong>
+                      <em>APY, TVL durability, user fit, risk explanation, and action readiness in one board.</em>
                     </article>
                     <article class="strategy-brief-card">
-                      <span class="scenario-label">What this tab does</span>
-                      <strong>Turns research into a decision brief.</strong>
-                      <em>No sandbox controls, no filler, no long AI writeup.</em>
+                      <span class="scenario-label">How LYRA helps</span>
+                      <strong>Research first, route prep second.</strong>
+                      <em>Bridge and swap prep appear only when LYRA can honestly support the path.</em>
                     </article>
                   </div>
 
                   <section class="strategy-result-card" data-strategy-result-card data-state="idle">
                     <div class="strategy-result-head">
-                      <div class="strategy-lab-kicker">Live Decision Brief</div>
-                      <strong data-strategy-result-title>Run the flagship comparison</strong>
+                      <div class="strategy-lab-kicker">Live Mantle Board</div>
+                      <strong data-strategy-result-title>Board status</strong>
                     </div>
                     <div class="strategy-result-empty" data-strategy-result-empty>
-                      <strong>One comparison. One clear read.</strong>
-                      <p>Run the live brief to compare mETH and USDY on Mantle and get a cleaner recommendation with source links.</p>
+                      <strong>Source-backed routes, not fake scenarios.</strong>
+                      <p>Load the board to see ranked Mantle opportunities with fit, risk explanation, source links, and what LYRA can help prepare.</p>
                     </div>
                     <div class="strategy-result-loading" data-strategy-result-loading>
-                      <strong>Building live comparison brief...</strong>
-                      <p>Pulling the comparison into one readable recommendation.</p>
+                      <strong>Refreshing live opportunities...</strong>
+                      <p>Checking Mantle routes, APYs, TVL durability, and route readiness.</p>
                     </div>
                     <div class="strategy-result-stack">
                       <div class="strategy-section">
-                        <span class="strategy-section-label">Brief Summary</span>
-                        <p data-strategy-result-summary>A live decision brief for defensive Mantle capital.</p>
+                        <span class="strategy-section-label">Board Summary</span>
+                        <p data-strategy-result-summary>Ranked Mantle routes using live source-backed signals.</p>
                       </div>
                       <div class="strategy-storyboard" data-strategy-storyboard></div>
                     </div>
                     <div class="strategy-result-footer">
-                      <span data-strategy-result-confidence>Confidence: Live brief</span>
-                      <span data-strategy-result-sources>Sources: Mantle mETH, Ondo USDY, DefiLlama</span>
+                      <span data-strategy-result-confidence>Confidence: Live route board</span>
+                      <span data-strategy-result-sources>Sources: DefiLlama, protocol sources</span>
                     </div>
                   </section>
                 </div>
@@ -6411,13 +7483,13 @@
             <div class="console-panel-view" data-view="reputation">
               <div class="console-panel-card">
                 <h3>Agent Reputation</h3>
-                <p>Verifiable performance and agent accountability for Mantle-native decisioning.</p>
+                <p>Verifiable performance and agent accountability for Mantle-native decisioning. This panel only grows when LYRA records outcomes that can be checked.</p>
                 <div class="console-list" id="reputation-panel-list">
-                  <div class="console-row"><div><strong>Decisions Made</strong><span>Recorded decisions will build this score over time.</span></div><code>0</code></div>
-                  <div class="console-row"><div><strong>Success Rate</strong><span>Locked until LYRA has enough recorded outcomes.</span></div><code>--</code></div>
-                  <div class="console-row"><div><strong>Yield Generated</strong><span>Will reflect realized outcomes, not projected marketing numbers.</span></div><code>--</code></div>
-                  <div class="console-row"><div><strong>Capital Protected</strong><span>Reserved for future verified decision tracking.</span></div><code>--</code></div>
-                  <div class="console-row"><div><strong>Agent Score</strong><span>Future ERC-8004 reputation layer.</span></div><code>pending</code></div>
+                  <div class="console-row"><div><strong>Verified decisions</strong><span>Recorded calls that reached a measurable outcome.</span></div><code>0</code></div>
+                  <div class="console-row"><div><strong>Success rate</strong><span>Locked until LYRA has enough verified outcomes.</span></div><code>--</code></div>
+                  <div class="console-row"><div><strong>Yield realized</strong><span>Reflects actual outcomes, not forecasted numbers.</span></div><code>--</code></div>
+                  <div class="console-row"><div><strong>Capital protected</strong><span>Tracks verified capital preservation over time.</span></div><code>--</code></div>
+                  <div class="console-row"><div><strong>Reputation score</strong><span>Future ERC-8004 accountability layer.</span></div><code>pending</code></div>
                 </div>
               </div>
             </div>
@@ -6435,8 +7507,13 @@
                   <button class="app-btn secondary" type="button" onclick="window.lyraOpenProfile()">Edit Profile</button>
                 </div>
                 <div class="console-list">
-                  <div class="console-row"><div><strong>Wallet</strong><span id="settings-wallet-value">No wallet connected</span></div><button class="app-btn secondary" type="button" onclick="window.lyraConnectWalletFromProfile()">Switch Wallet</button></div>
-                  <div class="console-row"><div><strong>Google Account</strong><span id="settings-google-value">Not connected</span></div><button class="app-btn secondary" type="button" onclick="window.lyraStartGoogleLogin()">Connect Google</button></div>
+                  <div class="console-row"><div><strong>Wallet</strong><span id="settings-wallet-value">No wallet connected</span></div></div>
+                  <div class="settings-action-stack">
+                    <button class="app-btn secondary" id="settings-switch-wallet-btn" type="button" onclick="window.lyraConnectWalletFromProfile()">Switch Wallet</button>
+                    <button class="app-btn secondary hidden" id="settings-disconnect-wallet-btn" type="button" onclick="window.lyraRemoveWallet()">Disconnect</button>
+                    <button class="app-btn secondary" id="settings-connect-google-btn" type="button" onclick="window.lyraStartGoogleLogin()">Connect Google</button>
+                  </div>
+                  <div class="console-row"><div><strong>Google Account</strong><span id="settings-google-value">Not connected</span></div></div>
                 </div>
               </div>
             </div>
@@ -6463,7 +7540,7 @@
       </div>
     </section>
   </div>
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=20260614b"></script>
 </body>
 </html>
 

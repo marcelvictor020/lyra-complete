@@ -5,7 +5,9 @@ import { DatabaseSync } from 'node:sqlite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const storageDir = path.join(__dirname, 'storage');
+const storageDir = process.env.VERCEL
+  ? path.join('/tmp', 'lyra-storage')
+  : path.join(__dirname, 'storage');
 
 if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir, { recursive: true });

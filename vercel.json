@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/", "destination": "/lyra.html" },
+    { "source": "/scan-wallet", "destination": "/api/scan-wallet" },
+    { "source": "/wallet-analysis/:path*", "destination": "/api/wallet-analysis/:path*" }
+  ]
+}

@@ -1,7 +1,7 @@
-﻿class LYRAApp {
+class LYRAApp {
   constructor() {
     this.defaultAvatarSrc = './glass-user-icon.jpg';
-    this.lyraAvatarSrc = './lyra-logo-mark.png';
+    this.lyraAvatarSrc = './lyra-logo-robot.png';
     this.autoReconnect = Boolean(window.LYRA_AUTO_RECONNECT);
     this.userAddress = null;
     this.currentSnapshot = null;
@@ -24,6 +24,9 @@
     this.heroVideo = document.getElementById('hero-video');
     this.heroLoopTimeout = null;
     this.heroHoldActive = false;
+    this.heroLoopSeeking = false;
+    this.heroPausedForLanding = false;
+    this.heroLoopStartTime = 0.52;
     this.navItems = Array.from(document.querySelectorAll('.nav-item'));
     this.panels = Array.from(document.querySelectorAll('.panel'));
     this.heroStartBtn = document.getElementById('hero-start-btn');
@@ -59,7 +62,10 @@
     this.profileLogoutBtn = document.getElementById('profile-logout-btn');
     this.chatInput = document.getElementById('chat-input');
     this.sendChatBtn = document.getElementById('send-chat-btn');
+    this.chatImageInput = document.getElementById('chat-image-input');
+    this.chatAttachBtn = document.getElementById('chat-attach-btn');
     this.chatThread = document.getElementById('chat-thread');
+    this.pendingChatImage = null;
     this.strategyLabRoot = document.querySelector('[data-strategy-lab]');
     this.strategyLabState = this.getInitialStrategyLabState();
     this.scanTimer = null;
@@ -151,6 +157,10 @@
     }
 
     if (this.sendChatBtn) this.sendChatBtn.addEventListener('click', () => this.sendMessage());
+    if (this.chatAttachBtn) this.chatAttachBtn.addEventListener('click', () => this.chatImageInput?.click());
+    if (this.chatImageInput) {
+      this.chatImageInput.addEventListener('change', (event) => this.handleChatImageSelected(event));
+    }
     if (this.chatInput) {
       this.chatInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
@@ -162,11 +172,32 @@
 
     if (this.strategyLabRoot) {
       this.strategyLabRoot.addEventListener('click', (event) => {
-        if (event.target.closest('[data-strategy-generate]')) {
-          this.generateStrategyLabResult().catch((error) => {
-            console.error('LYRA Strategy Lab generation failed', error);
-            this.setSurfaceStatus('Strategy Lab could not generate right now.');
+        const refreshBtn = event.target.closest('[data-strategy-generate], [data-opportunity-refresh]');
+        if (refreshBtn) {
+          this.generateStrategyLabResult(true).catch((error) => {
+            console.error('LYRA opportunities refresh failed', error);
+            this.setSurfaceStatus('Live Opportunities could not refresh right now.');
           });
+          return;
+        }
+
+        const promptBtn = event.target.closest('[data-opportunity-prompt]');
+        if (promptBtn) {
+          const prompt = promptBtn.dataset.opportunityPrompt || '';
+          if (prompt) {
+            this.showPanel('overview');
+            this.handleStarterPrompt(prompt);
+          }
+          return;
+        }
+
+        const actionBtn = event.target.closest('[data-opportunity-action]');
+        if (actionBtn) {
+          const action = actionBtn.dataset.opportunityAction || '';
+          if (action) {
+            this.showPanel('overview');
+            this.handleLyraAction(action, actionBtn);
+          }
         }
       });
     }
@@ -174,6 +205,7 @@
 
   renderMarketTape(items = []) {
     const track = document.getElementById('market-tape-track');
+    this.marketTapeItems = items;
     if (!track || !items.length) return;
 
     const repeated = [...items, ...items, ...items];
@@ -181,6 +213,50 @@
       const tone = item.tone || 'neutral';
       return `<span class="tape-item ${tone}"><span class="tape-dot"></span>${item.label}</span>`;
     }).join('');
+  }
+
+  normalizeOpportunitySignals(items = []) {
+    const allowedSignals = [
+      'Mantle TVL',
+      'Top Stable APY',
+      'Top Lending APY',
+      'Top LP APY',
+      'Merchant Moe Liquidity',
+      'Aave V3 TVL',
+      'Clearpool Pool Size',
+      'New Opportunity Detected'
+    ];
+
+    const normalized = [];
+    const seen = new Set();
+
+    (items || []).forEach((item) => {
+      const title = String(item?.title || '').trim();
+      const label = String(item?.label || '').trim();
+      const matched = allowedSignals.find((signal) =>
+        title.toLowerCase() === signal.toLowerCase() || label.toLowerCase().includes(signal.toLowerCase())
+      );
+      if (!matched || seen.has(matched)) return;
+      seen.add(matched);
+      normalized.push({
+        label: matched,
+        tone: item?.tone || 'neutral',
+        value: item?.value || '',
+        detail: item?.detail || label.replace(new RegExp(`^${matched}\\s*`, 'i'), '').trim()
+      });
+    });
+
+    allowedSignals.forEach((label, index) => {
+      if (seen.has(label) || normalized.length >= 6) return;
+      normalized.push({
+        label,
+        tone: index === 0 ? 'positive' : 'neutral',
+        value: '--',
+        detail: 'Signal syncing'
+      });
+    });
+
+    return normalized.slice(0, 6);
   }
 
   async loadMarketTape() {
@@ -192,10 +268,12 @@
       }
     } catch {
       this.renderMarketTape([
-        { label: 'MNT price syncing', tone: 'neutral' },
-        { label: 'ETH price syncing', tone: 'neutral' },
-        { label: 'BTC price syncing', tone: 'neutral' },
-        { label: 'Mantle TVL syncing', tone: 'neutral' }
+        { label: 'Mantle TVL', tone: 'positive' },
+        { label: 'Top Stable APY', tone: 'neutral' },
+        { label: 'Top Lending APY', tone: 'neutral' },
+        { label: 'Top LP APY', tone: 'neutral' },
+        { label: 'Merchant Moe Liquidity', tone: 'neutral' },
+        { label: 'Aave V3 TVL', tone: 'neutral' }
       ]);
     }
   }
@@ -226,7 +304,7 @@
         name: 'LYRA',
         description: 'LYRA autonomous Mantle intelligence agent',
         url: window.location.origin,
-        icons: [`${window.location.origin}/lyra-logo-mark.png`]
+        icons: [`${window.location.origin}/lyra-favicon-circle.png`]
       };
       const { createLyraWalletModal } = await import('./wallet-modal-bundle.js');
 
@@ -332,6 +410,8 @@
     const isConnected = Boolean(accountState?.isConnected);
     const address = accountState?.address || null;
     const modalError = accountState?.error;
+    const normalizedCurrentAddress = this.userAddress ? String(this.userAddress).toLowerCase() : '';
+    const normalizedNextAddress = address ? String(address).toLowerCase() : '';
 
     if (modalError) {
       this.walletModalOpening = false;
@@ -357,6 +437,18 @@
 
     if (!this.walletConnectRequested && !this.userAddress && !this.pendingOpenProfileAfterWallet) {
       this.walletModalOpening = false;
+      return;
+    }
+
+    if (!this.walletConnectRequested && normalizedCurrentAddress && normalizedCurrentAddress === normalizedNextAddress && !this.pendingOpenProfileAfterWallet) {
+      this.resumeAddress = address;
+      this.heroCanEnter = true;
+      this.walletProviderName = this.walletModal?.getWalletProviderType?.() || this.walletProviderName || 'Wallet';
+      this.activeProvider = this.walletModal?.getWalletProvider?.() || this.activeProvider || null;
+      this.walletModalOpening = false;
+      this.closeWalletChooser();
+      this.closeLogin();
+      this.updateWalletDisplays();
       return;
     }
 
@@ -512,11 +604,11 @@
 
     this.chatThread.dataset.briefRendered = 'true';
     this.chatThread.innerHTML = `
-      <div class="analysis-brief">
-        <div class="analysis-brief-head">
-          <strong>Wallet intelligence loaded.</strong>
-          <span>GoldRush live read</span>
-        </div>
+        <div class="analysis-brief">
+          <div class="analysis-brief-head">
+            <strong>Wallet intelligence loaded.</strong>
+            <span>Live wallet scan</span>
+          </div>
         <div class="analysis-grid">
           <div class="analysis-cell"><span>Value</span><strong>$${Number(totalValue || 0).toFixed(2)}</strong></div>
           <div class="analysis-cell"><span>Confidence</span><strong>${confidence}</strong></div>
@@ -791,10 +883,12 @@
 
     clearTimeout(this.heroLoopTimeout);
     this.heroHoldActive = false;
+    this.heroLoopSeeking = false;
+    this.heroPausedForLanding = false;
 
     try {
       this.heroVideo.pause();
-      this.heroVideo.currentTime = 0;
+      this.heroVideo.currentTime = this.heroLoopStartTime;
       this.resumeHeroVideoPlayback();
     } catch {
       // If the browser blocks playback momentarily, the video will still be reset.
@@ -806,8 +900,8 @@
 
     const attemptPlay = () => {
       this.heroVideo.muted = true;
-      if (this.heroVideo.currentTime < 0.06) {
-        this.heroVideo.currentTime = 0.08;
+      if (this.heroVideo.currentTime < this.heroLoopStartTime) {
+        this.heroVideo.currentTime = this.heroLoopStartTime;
       }
       const playPromise = this.heroVideo.play();
       if (playPromise && typeof playPromise.catch === 'function') {
@@ -836,10 +930,42 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
+  escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  formatUsdCompact(value) {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return '--';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      notation: amount >= 1000 ? 'compact' : 'standard',
+      maximumFractionDigits: amount >= 1000 ? 1 : 2
+    }).format(amount);
+  }
+
+  formatOpportunitiesCheckedAt(value) {
+    if (!value) return 'Unknown';
+    return new Date(value).toLocaleString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: 'short'
+    });
+  }
+
   getInitialStrategyLabState() {
     return {
       generated: false,
-      loading: false
+      loading: false,
+      data: null,
+      error: ''
     };
   }
 
@@ -848,6 +974,8 @@
     if (!root) return null;
     return {
       root,
+      panelView: root.closest('.console-panel-view'),
+      panelCard: root.closest('.console-panel-card'),
       resultCard: root.querySelector('[data-strategy-result-card]'),
       resultTitle: root.querySelector('[data-strategy-result-title]'),
       resultSummary: root.querySelector('[data-strategy-result-summary]'),
@@ -858,146 +986,313 @@
   }
 
   buildStrategyLabPrompt() {
-    return 'Compare mETH and USDY as a defensive allocation on Mantle.';
+    return 'What are the strongest live opportunities on Mantle right now?';
   }
 
-  getStrategyLabResult() {
-    const walletContext = this.userAddress
-      ? this.userAddress.slice(0, 6) + '...' + this.userAddress.slice(-4) + ' connected'
-      : 'Optional, no wallet required';
-    return {
-      title: 'mETH vs USDY on Mantle',
-      summary: 'A live decision brief for defensive Mantle capital. APY is annualized research context here, not a monthly payout promise.',
-      storyboardHtml: `
-        <div class="strategy-result-board">
-          <div class="strategy-evidence-strip">
-            <div class="strategy-evidence-item">
-              <span>Question</span>
-              <strong>Which asset fits defensive capital better on Mantle?</strong>
+  buildOpportunityActionMarkup(action) {
+    if (!action?.label) return '';
+    const label = this.escapeHtml(action.label);
+    const variant = action.variant === 'primary' ? 'primary' : 'secondary';
+    if (action.type === 'link' && action.url) {
+      return `<a class="lyra-chip-link ${variant}" href="${this.escapeHtml(action.url)}" target="_blank" rel="noreferrer">${label}</a>`;
+    }
+    if (action.type === 'action' && action.action) {
+      return `<button class="lyra-chip-link ${variant}" type="button" data-opportunity-action="${this.escapeHtml(action.action)}">${label}</button>`;
+    }
+    if (action.type === 'prompt' && action.prompt) {
+      return `<button class="lyra-chip-link ${variant}" type="button" data-opportunity-prompt="${this.escapeHtml(action.prompt)}">${label}</button>`;
+    }
+    return '';
+  }
+
+  buildLiveSignalRailMarkup() {
+    const items = this.normalizeOpportunitySignals(this.marketTapeItems || []).slice(0, 6);
+    if (!items.length) {
+      return `
+        <div class="opportunity-signal-empty">
+          <span class="strategy-section-label">Live signals</span>
+          <strong>Signal feed syncing</strong>
+          <p>Market and ecosystem signals will appear here as the board refreshes.</p>
+        </div>
+      `;
+    }
+
+    return items.map((item, index) => `
+      <article class="opportunity-signal-card ${index === 0 ? 'primary' : ''} ${String(item.label || '').toLowerCase() === 'mantle tvl' ? 'value-primary' : ''}">
+        <span class="opportunity-signal-dot ${this.escapeHtml(item.tone || 'neutral')}"></span>
+        <div class="opportunity-signal-copy">
+          <span class="strategy-section-label">${this.escapeHtml(item.label || '')}</span>
+          <strong>${this.escapeHtml(item.detail || '')}</strong>
+        </div>
+        <div class="opportunity-signal-value">
+          <span>${this.escapeHtml(item.value || '--')}</span>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  buildOpportunityRoutesMarkup(data) {
+    if (!data?.cards?.length) {
+      return `
+        <div class="opportunity-empty-state">
+          <strong>No ranked Mantle routes are visible right now.</strong>
+          <p>Refresh the board in a moment. LYRA only publishes this board when the live Mantle data is strong enough to support a real recommendation instead of filler.</p>
+        </div>
+      `;
+    }
+
+    const topRoutes = (data.cards || []).slice(0, 4);
+    const renderRouteCard = (item, variant = 'primary') => {
+      const rank = Number(item.rank || 0);
+      const title = this.escapeHtml(item.protocol || 'Unknown route');
+      const symbol = this.escapeHtml(item.symbol || '');
+      const placement = this.escapeHtml(item.placementLabel || 'Available on Mantle');
+      const category = this.escapeHtml(item.category || 'Route');
+      const network = this.escapeHtml(item.network || 'Mantle');
+      const apy = Number(item.apy || 0).toFixed(2);
+      const tvl = this.formatUsdCompact(item.tvlUsd);
+      const fit = this.escapeHtml(item.fit || 'Visible route');
+      const reason = this.escapeHtml(item.reason || 'This route is visible on the current Mantle board.');
+      const riskLevel = this.escapeHtml(item.riskLevel || 'Unknown');
+      const riskExplanation = this.escapeHtml(item.riskExplanation || 'Risk context unavailable.');
+      const readinessLabel = this.escapeHtml(item.readiness?.label || 'Research only');
+      const readinessDetail = this.escapeHtml(item.readiness?.detail || 'LYRA is only exposing research context for this route right now.');
+      const placementExplanation = this.escapeHtml(item.placementExplanation || 'This route is available on Mantle.');
+      const sourceUrl = this.escapeHtml(item.links?.[0]?.url || '#');
+      const sourceLabel = this.escapeHtml(item.links?.[0]?.label || 'Protocol');
+      const secondaryClass = variant === 'secondary' ? ' route-list-row-secondary' : '';
+
+      return `
+        <div class="route-list-row${secondaryClass}">
+          <div class="route-list-head">
+            <div class="route-list-title">
+              <span class="strategy-section-label">Route ${rank}</span>
+              <strong>${title}${symbol ? ` <span>${symbol}</span>` : ''}</strong>
             </div>
-            <div class="strategy-evidence-item">
-              <span>APY basis</span>
-              <strong>Annualized, not monthly</strong>
-            </div>
-            <div class="strategy-evidence-item">
-              <span>Wallet context</span>
-              <strong>${walletContext}</strong>
-            </div>
-            <div class="strategy-evidence-item">
-              <span>Decision style</span>
-              <strong>Protection vs upside tradeoff</strong>
+            <div class="route-list-metrics">
+              <span>APY ${apy}%</span>
+              <span>TVL ${tvl}</span>
             </div>
           </div>
-
-          <div class="strategy-compare-grid">
-            <article class="strategy-decision-card" data-tone="growth">
-              <span class="strategy-section-label">Option A</span>
-              <strong>mETH</strong>
-              <p class="strategy-decision-copy">Productive ETH exposure that keeps the user tied to ETH-linked upside while staying inside the Mantle ecosystem.</p>
-              <div class="strategy-key-stat">
-                <span>Best when</span>
-                <strong>The user still wants upside</strong>
-              </div>
-              <div class="strategy-chip-row">
-                <span class="strategy-chip">ETH-linked upside</span>
-                <span class="strategy-chip">Staking yield</span>
-                <span class="strategy-chip">Higher volatility</span>
-              </div>
-            </article>
-
-            <article class="strategy-decision-card center">
-              <span class="strategy-section-label">LYRA Call</span>
-              <strong>Use USDY when capital protection matters most. Use mETH only when the user still wants ETH-linked upside in the same posture.</strong>
-              <p class="strategy-decision-copy">This should read like a decision, not a story. The real tradeoff is simple: mETH is the more directional side, USDY is the steadier side, and a blend only makes sense if the user consciously wants both.</p>
-              <div class="strategy-decision-points">
-                <div><span>Upside-first</span><strong>mETH leads</strong></div>
-                <div><span>Protection-first</span><strong>USDY leads</strong></div>
-                <div><span>Balanced posture</span><strong>Explain the mix clearly</strong></div>
-              </div>
-            </article>
-
-            <article class="strategy-decision-card" data-tone="defensive">
-              <span class="strategy-section-label">Option B</span>
-              <strong>USDY</strong>
-              <p class="strategy-decision-copy">Steadier income posture for users who care more about preserving capital than maximizing ETH-linked upside.</p>
-              <div class="strategy-key-stat">
-                <span>Best when</span>
-                <strong>Capital preservation leads</strong>
-              </div>
-              <div class="strategy-chip-row">
-                <span class="strategy-chip">Defensive income</span>
-                <span class="strategy-chip">Lower volatility</span>
-                <span class="strategy-chip">Cleaner RWA story</span>
-              </div>
-            </article>
+          <div class="route-list-tags">
+            <span>${placement}</span>
+            <span>${category}</span>
+            <span>${network}</span>
+            <span>APY annualized</span>
           </div>
-
-          <div class="strategy-research-grid">
-            <div class="strategy-research-card">
-              <span class="strategy-section-label">What makes mETH useful</span>
-              <strong>It keeps the user productive without fully giving up ETH participation.</strong>
-              <p>That makes it stronger when the user still wants upside and can tolerate more movement in the position.</p>
+          <div class="route-list-grid">
+            <div class="route-list-cell">
+              <span class="strategy-section-label">Best fit</span>
+              <strong>${fit}</strong>
+              <p>${reason}</p>
             </div>
-            <div class="strategy-research-card">
-              <span class="strategy-section-label">What makes USDY useful</span>
-              <strong>It is easier to defend when the goal is steadier capital posture.</strong>
-              <p>That makes it the cleaner answer when the user wants defensiveness to be obvious and believable.</p>
+            <div class="route-list-cell">
+              <span class="strategy-section-label">Risk</span>
+              <strong>${riskLevel}</strong>
+              <p>${riskExplanation}</p>
             </div>
-            <div class="strategy-research-card">
-              <span class="strategy-section-label">How to read this</span>
-              <strong>Do not treat APY as a monthly payout forecast.</strong>
-              <p>Use live sources to validate the route, then treat this brief as a posture recommendation rather than a guaranteed return statement.</p>
+            <div class="route-list-cell">
+              <span class="strategy-section-label">Action readiness</span>
+              <strong>${readinessLabel}</strong>
+              <p>${readinessDetail}</p>
             </div>
           </div>
-
-          <div class="strategy-open-links">
-            <a class="lyra-chip-link primary" href="https://meth.mantle.xyz/" target="_blank" rel="noreferrer">Open mETH</a>
-            <a class="lyra-chip-link secondary" href="https://www.mantle.xyz/meth" target="_blank" rel="noreferrer">mETH docs</a>
-            <a class="lyra-chip-link primary" href="https://ondo.finance/" target="_blank" rel="noreferrer">Open USDY</a>
-            <a class="lyra-chip-link secondary" href="https://defillama.com/yields" target="_blank" rel="noreferrer">Check live APYs</a>
+          <div class="route-list-foot">
+            <div class="route-list-cell">
+              <span class="strategy-section-label">Mantle fit</span>
+              <p>${placementExplanation}</p>
+            </div>
+            <a class="route-list-link" href="${sourceUrl}" target="_blank" rel="noreferrer">${sourceLabel}</a>
           </div>
         </div>
-      `,
-      confidence: this.userAddress ? 'Confidence: Live brief with wallet context' : 'Confidence: Live brief',
-      sources: 'Sources: Mantle mETH, Ondo USDY, DefiLlama'
+      `;
     };
+
+    const leadRouteMarkup = topRoutes[0] ? renderRouteCard(topRoutes[0], 'primary') : '';
+    const supportingRoutesMarkup = topRoutes.slice(1).map((item) => renderRouteCard(item, 'secondary')).join('');
+
+    return `
+      <section class="route-list-shell">
+        <div class="route-list-headline">
+          <span class="strategy-section-label">Ranked Routes</span>
+          <strong>Live Mantle route board</strong>
+        </div>
+        <div class="opportunity-route-intro">Showing the top ${topRoutes.length} featured routes from ${Number(data?.stats?.visibleRoutes || topRoutes.length)} scanned Mantle routes.</div>
+        <div class="route-list-wrap">
+          ${leadRouteMarkup}
+          <div class="route-list-secondary-grid">
+            ${supportingRoutesMarkup}
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  buildOpportunitiesMarkup(data) {
+    if (!data?.cards?.length) {
+      return `
+        <div class="opportunity-empty-state">
+          <strong>No ranked Mantle routes are visible right now.</strong>
+          <p>Refresh the board in a moment. LYRA only publishes this board when the live Mantle data is strong enough to support a real recommendation instead of filler.</p>
+        </div>
+      `;
+    }
+
+    const stats = data.stats || {};
+
+    const methodology = (data.methodology || []).map((item) => `<li>${this.escapeHtml(item)}</li>`).join('');
+    const recommendation = data.recommendation ? `
+      <div class="opportunity-footer-card opportunity-verdict-card">
+        <span class="strategy-section-label">LYRA take</span>
+        <strong>${this.escapeHtml(data.recommendation.title)}</strong>
+        <p>${this.escapeHtml(data.recommendation.copy)}</p>
+      </div>
+    ` : '';
+
+    const statsMarkup = `
+      <div class="opportunity-board-stats">
+        <div class="opportunity-board-stat">
+          <span class="strategy-section-label">Routes scanned</span>
+          <strong>${Number(stats.visibleRoutes || 0)}</strong>
+        </div>
+        <div class="opportunity-board-stat">
+          <span class="strategy-section-label">Mantle-native</span>
+          <strong>${Number(stats.mantleNativeRoutes || 0)}</strong>
+        </div>
+        <div class="opportunity-board-stat">
+          <span class="strategy-section-label">Available on Mantle</span>
+          <strong>${Number(stats.availableRoutes || 0)}</strong>
+        </div>
+        <div class="opportunity-board-stat">
+          <span class="strategy-section-label">Featured below</span>
+          <strong>${Math.min(4, Number(stats.visibleRoutes || 0))}</strong>
+        </div>
+      </div>
+    `;
+
+    const boardNotes = `
+      <div class="opportunity-footer-strip">
+        <div class="opportunity-footer-card opportunity-method-card">
+          <span class="strategy-section-label">How LYRA ranks</span>
+          <strong>Source-backed. Mantle-specific. Clearly labeled.</strong>
+          <ul>${methodology}</ul>
+        </div>
+        ${recommendation}
+        <div class="opportunity-footer-card opportunity-method-card">
+          <span class="strategy-section-label">Checked</span>
+          <strong>${this.escapeHtml(this.formatOpportunitiesCheckedAt(data.checkedAt))}</strong>
+          <p>APY is annualized. Use this board to compare route quality, durability, and readiness before moving capital.</p>
+        </div>
+      </div>
+    `;
+
+    return `
+      <div class="opportunities-shell">
+        <div class="opportunities-main">
+          ${statsMarkup}
+          ${boardNotes}
+        </div>
+        <aside class="opportunity-side-stack">
+          <div class="opportunity-signal-rail">
+            <div class="opportunity-signal-head">
+              <span class="strategy-section-label">Live board pulse</span>
+              <strong>Mantle ecosystem signals</strong>
+            </div>
+            ${this.buildLiveSignalRailMarkup()}
+          </div>
+        </aside>
+        <div class="opportunities-route-span">
+          ${this.buildOpportunityRoutesMarkup(data)}
+        </div>
+      </div>
+    `;
   }
 
   renderStrategyLabState() {
     const elements = this.getStrategyLabElements();
     if (!elements) return;
 
-    const { generated, loading } = this.strategyLabState;
+    const { generated, loading, data, error } = this.strategyLabState;
     if (elements.resultCard) {
       elements.resultCard.dataset.state = loading ? 'loading' : generated ? 'ready' : 'idle';
     }
 
-    const result = this.getStrategyLabResult();
     if (elements.resultTitle) {
       elements.resultTitle.textContent = loading
-        ? 'Building live comparison brief...'
+        ? 'Refreshing live opportunities...'
+        : 'Live Opportunities';
+    }
+    if (elements.resultSummary) {
+      elements.resultSummary.textContent = loading
+        ? 'Pulling the latest Mantle routes, sources, and action-readiness states.'
         : generated
-          ? result.title
-          : 'Run the flagship comparison';
+          ? (data?.summary || 'Ranked Mantle routes using live source-backed signals.')
+          : 'Load the board to see ranked Mantle routes, fit, risk explanation, and what LYRA can help prepare next.';
     }
-    if (elements.resultSummary) elements.resultSummary.textContent = result.summary;
     if (elements.storyboard) {
-      elements.storyboard.innerHTML = generated && !loading ? result.storyboardHtml : '';
+      elements.storyboard.innerHTML = generated && !loading
+        ? this.buildOpportunitiesMarkup(data)
+        : error
+          ? `<div class="opportunity-empty-state"><strong>${this.escapeHtml(error)}</strong></div>`
+          : '';
     }
-    if (elements.resultConfidence) elements.resultConfidence.textContent = result.confidence;
-    if (elements.resultSources) elements.resultSources.textContent = result.sources;
+    if (generated && !loading) {
+      window.requestAnimationFrame(() => {
+        const scrollers = [
+          document.getElementById('app'),
+          elements.panelView,
+          elements.panelCard,
+          elements.root,
+          elements.resultCard,
+          elements.storyboard
+        ].filter(Boolean);
+
+        scrollers.forEach((node) => {
+          if (typeof node.scrollTo === 'function') {
+            node.scrollTo({ top: 0, behavior: 'auto' });
+          } else {
+            node.scrollTop = 0;
+          }
+        });
+
+        const routeSection = elements.storyboard?.querySelector('.route-list-shell');
+        const firstRoute = elements.storyboard?.querySelector('.route-list-row');
+        const target = routeSection || firstRoute || elements.storyboard;
+        if (target && typeof target.scrollIntoView === 'function') {
+          target.scrollIntoView({ block: 'start', behavior: 'auto' });
+        }
+      });
+    }
+    if (elements.resultConfidence) elements.resultConfidence.textContent = data?.confidence || 'Confidence: Live route board';
+    if (elements.resultSources) elements.resultSources.textContent = data?.sources || 'Sources: DefiLlama, protocol sources';
   }
 
-  async generateStrategyLabResult() {
+  async generateStrategyLabResult(force = false) {
+    if (this.strategyLabState.loading) return;
+    if (this.strategyLabState.generated && this.strategyLabState.data && !force) {
+      this.renderStrategyLabState();
+      return;
+    }
     this.strategyLabState.loading = true;
-    this.strategyLabState.generated = false;
+    this.strategyLabState.error = '';
     this.renderStrategyLabState();
-    this.setSurfaceStatus('Strategy Lab is building the live comparison brief...');
-    await this.sleep(450);
-    this.strategyLabState.loading = false;
-    this.strategyLabState.generated = true;
-    this.renderStrategyLabState();
-    this.setSurfaceStatus('Live comparison brief ready.');
+    this.setSurfaceStatus('Refreshing live Mantle opportunities...');
+    try {
+      const response = await fetch('/api/opportunities');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not load live opportunities.');
+      this.strategyLabState.data = data;
+      this.strategyLabState.generated = true;
+      this.setSurfaceStatus('Live opportunities board ready.');
+    } catch (error) {
+      this.strategyLabState.data = null;
+      this.strategyLabState.generated = true;
+      this.strategyLabState.error = error?.message || 'Could not load live opportunities.';
+      this.setSurfaceStatus(this.strategyLabState.error);
+    } finally {
+      this.strategyLabState.loading = false;
+      this.renderStrategyLabState();
+    }
   }
 
   showPanel(panelId) {
@@ -1008,14 +1303,14 @@
     const subtitleEl = document.getElementById('console-subtitle');
     const titles = {
       overview: 'Ask LYRA',
-      opportunities: 'Strategy Lab',
+      opportunities: 'Live Opportunities',
       decisions: 'Agent Decisions',
       reputation: 'Agent Reputation',
       settings: 'Settings'
     };
     const subtitles = {
       overview: 'YOUR AI DEFI INTELLIGENCE PARTNER',
-      opportunities: 'LIVE MANTLE RESEARCH AND COMPARISON BRIEF',
+      opportunities: 'LIVE MANTLE OPPORTUNITY BOARD',
       decisions: 'TRACKED DECISION HISTORY',
       reputation: 'TRUST AND OUTCOME LAYER',
       settings: 'PROFILE AND SYSTEM CONTROLS'
@@ -1025,11 +1320,26 @@
     if (subtitleEl) subtitleEl.textContent = subtitles[panelId] || 'YOUR AI DEFI INTELLIGENCE PARTNER';
     if (panelId === 'opportunities' && this.strategyLabRoot && !this.strategyLabState.generated && !this.strategyLabState.loading) {
       this.generateStrategyLabResult().catch((error) => {
-        console.error('LYRA Strategy Lab autoload failed', error);
-        this.setSurfaceStatus('Strategy Lab could not generate right now.');
+        console.error('LYRA opportunities autoload failed', error);
+        this.setSurfaceStatus('Live Opportunities could not load right now.');
       });
     }
     document.getElementById('app')?.scrollTo({ top: 0, behavior: 'auto' });
+    if (panelId === 'opportunities') {
+      window.requestAnimationFrame(() => {
+        const routeSection = this.strategyLabRoot?.querySelector('.opportunity-route-section');
+        const panelView = this.strategyLabRoot?.closest('.console-panel-view');
+        const panelCard = this.strategyLabRoot?.closest('.console-panel-card');
+        [panelView, panelCard, this.strategyLabRoot].filter(Boolean).forEach((node) => {
+          if (typeof node.scrollTo === 'function') {
+            node.scrollTo({ top: 0, behavior: 'auto' });
+          } else {
+            node.scrollTop = 0;
+          }
+        });
+        routeSection?.scrollIntoView({ block: 'start', behavior: 'auto' });
+      });
+    }
   }
 
   async connectWallet(options = {}) {
@@ -1353,10 +1663,22 @@
 
     this.heroVideo.addEventListener('loadedmetadata', () => {
       this.heroHoldActive = false;
+      this.heroLoopSeeking = false;
+      this.heroPausedForLanding = false;
+    });
+
+    this.heroVideo.addEventListener('seeked', () => {
+      this.heroLoopSeeking = false;
     });
 
     this.heroVideo.addEventListener('timeupdate', () => {
-      if (this.heroHoldActive || !this.heroVideo.duration || document.body.classList.contains('app-entered')) return;
+      if (
+        this.heroHoldActive
+        || this.heroLoopSeeking
+        || this.heroPausedForLanding
+        || !this.heroVideo.duration
+        || document.body.classList.contains('app-entered')
+      ) return;
 
       const safeLoopPoint = this.heroVideo.duration > 2.6
         ? Math.min(2.22, this.heroVideo.duration - 0.52)
@@ -1364,19 +1686,19 @@
       if (this.heroVideo.currentTime < safeLoopPoint) return;
 
       this.heroHoldActive = true;
-      clearTimeout(this.heroLoopTimeout);
       this.heroVideo.pause();
+      clearTimeout(this.heroLoopTimeout);
       this.heroLoopTimeout = window.setTimeout(() => {
-        this.heroVideo.currentTime = 0.08;
-        this.resumeHeroVideoPlayback();
+        this.heroPausedForLanding = true;
         this.heroHoldActive = false;
       }, 3000);
     });
 
     this.heroVideo.addEventListener('ended', () => {
-      if (this.heroHoldActive) return;
-      this.heroVideo.currentTime = 0.08;
-      this.resumeHeroVideoPlayback();
+      this.heroVideo.pause();
+      this.heroPausedForLanding = true;
+      this.heroHoldActive = false;
+      this.heroLoopSeeking = false;
     });
   }
 
@@ -1421,7 +1743,7 @@
       'Generating intelligence...'
     ];
 
-    this.scanRequest = fetch('/scan-wallet', {
+    this.scanRequest = fetch('/api/scan-wallet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ walletAddress: this.userAddress })
@@ -1526,7 +1848,7 @@
     const portfolioLabel = document.querySelector('.chart-card .section-label');
     if (portfolioLabel) portfolioLabel.textContent = 'Live Portfolio';
     const modePill = document.getElementById('mode-pill');
-    if (modePill && !modePill.textContent.trim()) modePill.textContent = 'Mantle Testnet';
+    if (modePill && !modePill.textContent.trim()) modePill.textContent = 'Mantle Network';
 
     const positions = document.querySelector('.positions');
     if (positions) {
@@ -1648,6 +1970,7 @@
 
   renderConsolePanels() {
     this.updateWalletSummaryCard();
+    this.renderStrategyLabState();
     this.renderAgentDecisionsPanel();
   }
 
@@ -1702,6 +2025,9 @@
     const settingsMeta = document.getElementById('settings-profile-meta');
     const settingsWallet = document.getElementById('settings-wallet-value');
     const settingsGoogle = document.getElementById('settings-google-value');
+    const settingsSwitchWalletBtn = document.getElementById('settings-switch-wallet-btn');
+    const settingsDisconnectWalletBtn = document.getElementById('settings-disconnect-wallet-btn');
+    const settingsConnectGoogleBtn = document.getElementById('settings-connect-google-btn');
     if (settingsAvatar) {
       const avatarSrc = this.profileState?.avatarDataUrl || this.defaultAvatarSrc;
       settingsAvatar.innerHTML = `<img src="${avatarSrc}" alt="Profile avatar">`;
@@ -1724,6 +2050,19 @@
     }
     if (settingsGoogle) {
       settingsGoogle.textContent = this.googleProfile?.email || this.profileState?.googleEmail || 'Not connected';
+    }
+    if (settingsSwitchWalletBtn) {
+      settingsSwitchWalletBtn.textContent = this.userAddress ? 'Switch Wallet' : 'Connect Wallet';
+    }
+    if (settingsDisconnectWalletBtn) {
+      settingsDisconnectWalletBtn.classList.toggle('hidden', !this.userAddress);
+    }
+    if (settingsConnectGoogleBtn) {
+      const googleConnected = Boolean(this.googleProfile?.email || this.profileState?.googleEmail);
+      settingsConnectGoogleBtn.textContent = googleConnected ? 'Google Connected' : 'Connect Google';
+      settingsConnectGoogleBtn.disabled = googleConnected;
+      settingsConnectGoogleBtn.style.opacity = googleConnected ? '0.6' : '1';
+      settingsConnectGoogleBtn.style.cursor = googleConnected ? 'default' : 'pointer';
     }
   }
 
@@ -1820,6 +2159,7 @@
 
   formatHistoryCoverage() {
     if (!this.userAddress) return 'Unknown';
+    if (!this.currentWalletAnalysis) return 'Scanning...';
     if (this.currentWalletAnalysis?.observedSince && this.currentWalletAnalysis.observedSince !== 'Unknown') {
       return `Observed since ${this.currentWalletAnalysis.observedSince}`;
     }
@@ -1856,7 +2196,7 @@
       || this.currentWalletAnalysis?.previousScan?.createdAt
       || this.currentSnapshot?.timestamp
       || null;
-    if (!stamp) return this.userAddress ? 'Pending' : 'Unknown';
+    if (!stamp) return this.userAddress ? 'Analyzing...' : 'Unknown';
     const diffMs = Date.now() - new Date(stamp).getTime();
     const minutes = Math.max(1, Math.round(diffMs / 60000));
     if (minutes < 60) return `${minutes} minutes ago`;
@@ -1864,6 +2204,15 @@
     if (hours < 24) return `${hours} hours ago`;
     const days = Math.round(hours / 24);
     return `${days} days ago`;
+  }
+
+  formatDisplayNetworkLabel(label) {
+    const value = String(label || '').trim();
+    if (!value) return value;
+    if (value === 'Mantle Sepolia' || value === 'Mantle' || value === 'Mantle Testnet') {
+      return 'Mantle Network';
+    }
+    return value;
   }
 
   updateWalletSummaryCard() {
@@ -1878,8 +2227,10 @@
     const ageEl = document.getElementById('summary-history-coverage');
     const lastEl = document.getElementById('summary-last-analysis');
 
-    const network = document.getElementById('mode-pill')?.textContent?.trim()
-      || (this.userAddress ? 'Mantle Sepolia' : '--');
+    const network = this.formatDisplayNetworkLabel(
+      document.getElementById('mode-pill')?.textContent?.trim()
+      || (this.userAddress ? 'Mantle Sepolia' : '--')
+    );
     const confidence = this.formatConfidenceLabel();
     const confidenceReason = this.formatConfidenceDetail();
 
@@ -1893,6 +2244,38 @@
     if (confidenceEl) confidenceEl.title = confidenceReason;
     if (ageEl) ageEl.textContent = this.formatHistoryCoverage();
     if (lastEl) lastEl.textContent = this.userAddress ? this.formatLastAnalysis() : 'Unknown';
+  }
+
+  setExecutionFormStatus(form, message = '', tone = 'busy') {
+    if (!form) return;
+    const statusEl = form.querySelector('[data-execution-status]');
+    if (!statusEl) return;
+    const text = String(message || '').trim();
+    statusEl.textContent = text;
+    statusEl.classList.toggle('visible', Boolean(text));
+    statusEl.classList.toggle('error', tone === 'error');
+  }
+
+  setExecutionFormBusy(form, busy, actionType = '') {
+    if (!form) return;
+    form.classList.toggle('is-submitting', Boolean(busy));
+    const controls = form.querySelectorAll('input, select, button');
+    controls.forEach((control) => {
+      if (busy) control.setAttribute('disabled', 'disabled');
+      else control.removeAttribute('disabled');
+    });
+    const submitBtn = form.querySelector('[type="submit"]');
+    if (!submitBtn) return;
+    if (!submitBtn.dataset.defaultLabel) {
+      submitBtn.dataset.defaultLabel = submitBtn.textContent.trim();
+    }
+    submitBtn.textContent = busy
+      ? (actionType === 'send'
+        ? 'Preparing transfer...'
+        : actionType === 'bridge'
+          ? 'Preparing bridge...'
+          : 'Preparing swap...')
+      : submitBtn.dataset.defaultLabel;
   }
 
   renderSnapshot() {
@@ -1962,7 +2345,7 @@
   addRichAssistantMessage(html) {
     const assistant = this.addChatMessage('assistant', '', true);
     assistant.body.classList.add('lyra-rich-bubble');
-    assistant.body.innerHTML = '<span class="assistant-thinking">Structuring answer<span class="thinking-dots"><span></span><span></span><span></span></span></span>';
+    assistant.body.innerHTML = '<span class="assistant-thinking">Pulling the answer together<span class="thinking-dots"><span></span><span></span><span></span></span></span>';
     assistant.body.style.opacity = '1';
     window.setTimeout(() => {
       assistant.body.innerHTML = html;
@@ -2064,6 +2447,7 @@
                 </label>
               ` : ''}
             </div>
+            <div class="lyra-exec-inline-status" data-execution-status></div>
             <div class="lyra-action-row lyra-exec-actions">
               <button class="lyra-chip-link primary" type="submit" data-execution-submit="true">${action === 'send' ? 'Send asset' : action === 'bridge' ? 'Bridge now' : 'Swap now'}</button>
               <button class="lyra-chip-link secondary" type="button" data-lyra-action="faucet">Get Gas</button>
@@ -2199,7 +2583,7 @@
       return;
     }
     const defaults = actionType === 'bridge'
-      ? { fromNetwork: 'Sepolia', toNetwork: 'Mantle Sepolia', tokenSymbol: 'MNT' }
+      ? { fromNetwork: 'Sepolia', toNetwork: 'Mantle Sepolia', tokenSymbol: 'ETH' }
       : actionType === 'swap'
         ? { fromNetwork: 'Mantle Mainnet', tokenSymbol: 'MNT', toTokenSymbol: 'ETH' }
         : { fromNetwork: 'Mantle Sepolia', tokenSymbol: 'MNT' };
@@ -2226,7 +2610,7 @@
     if (!form || !actionType) return;
     if (!['bridge', 'swap', 'send'].includes(actionType)) return;
 
-    if (actionType === 'bridge' || field.name === 'fromNetwork' || field.name === 'toNetwork') {
+    if (actionType === 'bridge' && field.name === 'fromNetwork') {
       await this.refreshExecutionPanel(form);
     }
   }
@@ -2286,15 +2670,16 @@
       return;
     }
 
-    const thinking = this.createThinkingMessage(
-      actionType === 'send'
-        ? 'Preparing transfer...'
-        : actionType === 'bridge'
-          ? 'Preparing bridge...'
-          : 'Preparing swap...'
-    );
-
     try {
+      this.setExecutionFormBusy(form, true, actionType);
+      this.setExecutionFormStatus(
+        form,
+        actionType === 'send'
+          ? 'Preparing transfer details...'
+          : actionType === 'bridge'
+            ? 'Preparing bridge route...'
+            : 'Preparing swap route...'
+      );
       const response = await fetch('/api/action/quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2305,14 +2690,21 @@
         throw new Error(data.error || 'Action request failed');
       }
 
-      thinking.el.remove();
+      this.setExecutionFormStatus(
+        form,
+        actionType === 'send'
+          ? 'Waiting for wallet signature...'
+          : actionType === 'bridge'
+            ? 'Bridge route prepared. Waiting for wallet signature...'
+            : 'Swap route prepared. Waiting for wallet signature...'
+      );
       const intent = data.intent || {};
       const execution = actionType === 'send'
         ? await this.executeDirectSend(payload, intent)
         : await this.executeDirectRoute(payload, intent);
       const txHash = execution?.txHash || execution;
       const confirmed = Boolean(execution?.confirmed);
-      const explorerUrl = this.getExplorerTransactionUrl(payload.fromNetwork || intent.fromNetwork, txHash);
+      const explorerUrl = this.getExplorerTransactionUrl(intent.fromNetwork || payload.fromNetwork, txHash);
       this.addRichAssistantMessage(this.buildExecutionResultHtml(actionType, {
         ...payload,
         ...intent,
@@ -2327,9 +2719,12 @@
         actionUrl: explorerUrl,
         actionLabel: explorerUrl ? 'View on explorer' : ''
       }));
+      this.setExecutionFormStatus(form, '');
+      this.setExecutionFormBusy(form, false, actionType);
       this.setSurfaceStatus(`${actionType.charAt(0).toUpperCase() + actionType.slice(1)} ${confirmed ? 'confirmed' : 'submitted'}.`);
     } catch (error) {
-      thinking.el.remove();
+      this.setExecutionFormBusy(form, false, actionType);
+      this.setExecutionFormStatus(form, error?.message || `Could not execute ${actionType} right now.`, 'error');
       this.setSurfaceStatus(error?.message || `Could not execute ${actionType} right now.`);
       this.addChatMessage('assistant', error?.message || `Could not execute ${actionType} right now.`);
     }
@@ -2446,7 +2841,7 @@
       throw new Error('Route transaction data is unavailable for this action.');
     }
 
-    await this.ensureExecutionNetwork(this.activeProvider, payload.fromNetwork || intent.fromNetwork || 'Mantle Sepolia');
+    await this.ensureExecutionNetwork(this.activeProvider, intent.fromNetwork || payload.fromNetwork || 'Mantle Sepolia');
     await this.maybeApproveRouteToken(intent, payload);
 
     const request = intent.transactionRequest;
@@ -2473,7 +2868,7 @@
     if (!this.activeProvider || !this.userAddress) {
       throw new Error('Connect a wallet first.');
     }
-    await this.ensureExecutionNetwork(this.activeProvider, payload.fromNetwork || 'Mantle Sepolia');
+    await this.ensureExecutionNetwork(this.activeProvider, intent.fromNetwork || payload.fromNetwork || 'Mantle Sepolia');
     const tokenAddress = String(intent.fromTokenAddress || '');
     const decimals = Number(intent.fromTokenDecimals || 18);
     const amountUnits = this.amountToUnits(payload.amount, decimals);
@@ -2557,6 +2952,65 @@
     }
   }
 
+  handleChatImageSelected(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.pendingChatImage = {
+        name: file.name,
+        dataUrl: String(reader.result || '')
+      };
+      this.renderComposerAttachmentState();
+      this.setSurfaceStatus(`Image attached: ${file.name}. Add a message or send it directly.`);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  renderComposerAttachmentState() {
+    if (!this.chatAttachBtn) return;
+    this.chatAttachBtn.classList.toggle('attached', Boolean(this.pendingChatImage));
+    this.chatAttachBtn.title = this.pendingChatImage ? `Attached: ${this.pendingChatImage.name}` : 'Upload image';
+  }
+
+  clearPendingChatImage() {
+    this.pendingChatImage = null;
+    if (this.chatImageInput) this.chatImageInput.value = '';
+    this.renderComposerAttachmentState();
+  }
+
+  addUserImageAttachment(image) {
+    if (!this.chatThread || !image?.dataUrl) return;
+    const el = document.createElement('div');
+    el.className = 'chat-msg user';
+    const avatar = document.createElement('div');
+    avatar.className = 'chat-avatar user-avatar';
+    const avatarSrc = this.profileState?.avatarDataUrl || this.defaultAvatarSrc;
+    avatar.innerHTML = `<img src="${avatarSrc}" alt="User">`;
+    const wrap = document.createElement('div');
+    const body = document.createElement('div');
+    body.className = 'chat-bubble chat-image-bubble';
+    body.innerHTML = `<div class="chat-image-shell"><img src="${image.dataUrl}" alt="${this.escapeHtml(image.name || 'Attached image')}"><div class="chat-image-meta">${this.escapeHtml(image.name || 'Attached image')}</div></div>`;
+    wrap.appendChild(body);
+    wrap.appendChild(this.createMessageMeta('user-timestamp', this.getCurrentTimeLabel()));
+    el.appendChild(avatar);
+    el.appendChild(wrap);
+    this.chatThread.appendChild(el);
+    this.chatThread.scrollTo({ top: this.chatThread.scrollHeight, behavior: 'smooth' });
+  }
+
+  normalizeAssistantResponse(text) {
+    return String(text || '')
+      .replace(/^#{1,6}\s*Insight\s*$/gim, '')
+      .replace(/^#{1,6}\s*Reasoning\s*$/gim, '')
+      .replace(/^#{1,6}\s*Bottom Line\s*$/gim, 'Bottom line')
+      .replace(/^#{1,6}\s*Sources\s*$/gim, 'Sources')
+      .replace(/^\s*[-*]\s+\*\*(.*?)\*\*:\s*/gm, '$1: ')
+      .replace(/^\s*[-*]\s+/gm, '• ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
   pushSystemMessage(text) {
     this.setSurfaceStatus(text);
   }
@@ -2579,20 +3033,24 @@
   async sendMessage(options = {}) {
     const overrideMessage = typeof options.messageOverride === 'string' ? options.messageOverride.trim() : '';
     const message = overrideMessage || this.chatInput?.value.trim();
-    if (!message) return;
+    const attachedImage = this.pendingChatImage ? { ...this.pendingChatImage } : null;
+    if (!message && !attachedImage) return;
 
     if (this.chatInput) this.chatInput.value = '';
+    if (attachedImage) this.clearPendingChatImage();
     if (!options.skipUserEcho) {
-      this.addChatMessage('user', message);
+      if (message) this.addChatMessage('user', message);
+      if (attachedImage) this.addUserImageAttachment(attachedImage);
     }
 
-    const thinking = this.createThinkingMessage(this.getThinkingLabelForMessage(message));
+    const effectiveMessage = message || 'Please review the attached image in context.';
+    const thinking = this.createThinkingMessage(this.getThinkingLabelForMessage(effectiveMessage));
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walletAddress: this.userAddress || null, message })
+        body: JSON.stringify({ walletAddress: this.userAddress || null, message: effectiveMessage })
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -2603,9 +3061,15 @@
       if (data.html) {
         this.addRichAssistantMessage(data.html);
       } else {
-        const assistant = this.addChatMessage('assistant', '', true);
-        await this.streamBubbleText(assistant.body, data.response);
-        assistant.body.style.opacity = '1';
+        const responseText = this.normalizeAssistantResponse(data.response);
+        const instantReply = responseText.length <= 180;
+        if (instantReply) {
+          this.addChatMessage('assistant', responseText, false);
+        } else {
+          const assistant = this.addChatMessage('assistant', '', true);
+          await this.streamBubbleText(assistant.body, responseText);
+          assistant.body.style.opacity = '1';
+        }
       }
 
       if (data.snapshot) {
@@ -2626,7 +3090,7 @@
 
     const normalized = prompt.toLowerCase();
 
-    if (!this.userAddress && (normalized.includes('bridge') || normalized.includes('swap') || normalized.includes('wallet') || normalized.includes('portfolio') || normalized.includes('activity'))) {
+    if (!this.userAddress && (normalized.includes('bridge') || normalized.includes('swap') || normalized.includes('send') || normalized.includes('transfer') || normalized.includes('wallet') || normalized.includes('portfolio') || normalized.includes('activity'))) {
       this.setSurfaceStatus('Connect a wallet first for wallet analysis or action preparation.');
       return;
     }
@@ -2674,20 +3138,7 @@
       ? holdings.slice(0, 3).map((asset) => `${asset.symbol}${asset.valueUsd ? ` $${Number(asset.valueUsd).toFixed(2)}` : ''}`).join(' / ')
       : 'No visible funded holdings detected yet.';
 
-    const summary = [
-      'Insight',
-      `${analysis.dominantChain || 'Limited chain coverage'} is the dominant visible network in the current scan.`,
-      '',
-      'Evidence',
-      `${analysis.transactionCount} transactions observed`,
-      `${analysis.activeChains?.length || 0} chain views detected`,
-      `Top visible holdings: ${holdingsLabel}`,
-      '',
-      'Confidence',
-      analysis.walletConfidence?.percent
-        ? `${analysis.walletConfidence.percent}% â€” ${analysis.walletConfidence.reason || analysis.walletConfidence.message || 'Additional wallet history required.'}`
-        : `${analysis.walletConfidence?.level || 'LOW'} â€” ${analysis.walletConfidence?.message || 'Additional wallet history required.'}`
-    ].join('\n');
+    const summary = `I’ve finished reading the visible wallet activity.\n\n${analysis.dominantChain || 'Limited chain coverage'} is the strongest network signal right now. I can see ${analysis.transactionCount} transactions across ${analysis.activeChains?.length || 0} chain views, and the clearest holdings are ${holdingsLabel}.\n\nConfidence is ${analysis.walletConfidence?.percent ? `${analysis.walletConfidence.percent}%` : (analysis.walletConfidence?.level || 'limited')}. ${analysis.walletConfidence?.reason || analysis.walletConfidence?.message || 'Additional wallet history would make the read stronger.'}`;
     const assistant = this.addChatMessage('assistant', '', true);
     this.streamBubbleText(assistant.body, summary).then(() => {
       assistant.body.style.opacity = '1';
@@ -2705,17 +3156,18 @@
     greeting.innerHTML = `
       <div class="workspace-intro-head">
         <div class="workspace-intro-meta">
-          <h3>Wallet intelligence ready.</h3>
+          <h3>Ask about Mantle routes, strategy, or execution<span class="workspace-cursor"></span></h3>
         </div>
       </div>
-      <p>Ask LYRA to analyze your wallet, compare Mantle strategies, review defensive allocations, or trigger supported execution flows.</p>
+      <p>LYRA can scan your wallet, compare Mantle positioning, and prepare supported actions without the usual clutter.</p>
       <div class="workspace-start-label">Suggested Start</div>
       <div class="workspace-prompt-grid">
         <button class="workspace-prompt" type="button" data-starter-prompt="Turn my current wallet into a 2-step Mantle strategy.">Turn my current wallet into a 2-step Mantle strategy.</button>
-        <button class="workspace-prompt" type="button" data-starter-prompt="What changed in my wallet, and what should I do next?">What changed in my wallet, and what should I do next?</button>
         <button class="workspace-prompt" type="button" data-starter-prompt="Compare mETH and USDY as a defensive allocation on Mantle.">Compare mETH and USDY as a defensive allocation on Mantle.</button>
+        <button class="workspace-prompt" type="button" data-starter-prompt="Show me the top earning opportunities on Mantle right now.">Show me the top earning opportunities on Mantle right now.</button>
         <button class="workspace-prompt" type="button" data-starter-prompt="Bridge 0.01 ETH to Mantle Sepolia.">Bridge 0.01 ETH to Mantle Sepolia.</button>
         <button class="workspace-prompt" type="button" data-starter-prompt="Swap 1 MNT into ETH on Mantle mainnet.">Swap 1 MNT into ETH on Mantle mainnet.</button>
+        <button class="workspace-prompt" type="button" data-starter-prompt="Send MNT to a wallet on Mantle Sepolia.">Send MNT to a wallet on Mantle Sepolia.</button>
       </div>
     `;
     this.chatThread.appendChild(greeting);

@@ -43,18 +43,22 @@ const protocolRegistry = new ProtocolRegistryService();
 const lifiService = new LifiService();
 const merchantMoeService = new MerchantMoeService();
 const alchemyService = new AlchemyService({
-  apiKey: process.env.ALCHEMY_API_KEY || 'wcxam6IKayZFOfrN9RShw'
+  apiKey: process.env.ALCHEMY_API_KEY || null
 });
 const covalentService = new CovalentService({
-  apiKey: process.env.COVALENT_API_KEY || 'cqt_rQJ8DftWpfFpPM6btPj3cDGFDpWg'
+  apiKey: process.env.COVALENT_API_KEY || null
 });
 const nansenService = new NansenService({
-  apiKey: process.env.NANSEN_API_KEY || 'nsn_9b5f8ddd4c6441768c9d7d64bce6f880'
+  apiKey: process.env.NANSEN_API_KEY || null
 });
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 let marketTapeCache = {
   timestamp: 0,
   data: null
+};
+let mantlePoolsCache = {
+  timestamp: 0,
+  data: []
 };
 const ALCHEMY_VISIBILITY_NETWORKS = [
   { network: 'eth-mainnet', label: 'Ethereum' },
@@ -157,6 +161,28 @@ async function fetchJson(url, timeoutMs = 9000) {
   }
 }
 
+async function getCachedMantlePools() {
+  const now = Date.now();
+  if (Array.isArray(mantlePoolsCache.data) && mantlePoolsCache.data.length && now - mantlePoolsCache.timestamp < 60_000) {
+    return mantlePoolsCache.data;
+  }
+
+  const poolsResponse = await fetchJson('https://yields.llama.fi/pools').catch(() => ({ data: [] }));
+  const mantlePools = (poolsResponse?.data || [])
+    .filter((pool) => String(pool.chain || '').toLowerCase() === 'mantle')
+    .filter((pool) => Number(pool.tvlUsd || 0) > 1000)
+    .filter((pool) => !/frozen/i.test(String(pool.poolMeta || '')))
+    .filter((pool) => Number(pool.apy || 0) > 0)
+    .sort((a, b) => Number(b.apy || 0) - Number(a.apy || 0));
+
+  mantlePoolsCache = {
+    timestamp: now,
+    data: mantlePools
+  };
+
+  return mantlePools;
+}
+
 function formatUsd(value, compact = false) {
   if (value === undefined || value === null || value === '') return '--';
   const number = Number(value);
@@ -190,6 +216,18 @@ function pickProtocol(protocols = [], names = []) {
     .sort((a, b) => Number(b.tvl || 0) - Number(a.tvl || 0))[0] || matches[0];
 }
 
+function protocolMantleTvl(protocol) {
+  if (!protocol) return null;
+  const chainTvls = protocol.chainTvls || protocol.chainTVLs || null;
+  if (chainTvls && typeof chainTvls === 'object') {
+    const direct = chainTvls.Mantle ?? chainTvls.mantle ?? null;
+    if (Number.isFinite(Number(direct))) return Number(direct);
+    const found = Object.entries(chainTvls).find(([key]) => String(key || '').toLowerCase() === 'mantle');
+    if (found && Number.isFinite(Number(found[1]))) return Number(found[1]);
+  }
+  return Number.isFinite(Number(protocol.tvl)) ? Number(protocol.tvl) : null;
+}
+
 function pickStablePool(pools = []) {
   const stableSymbols = ['USDC', 'USDT', 'USDe', 'mUSD'];
   return pools
@@ -208,6 +246,35 @@ function pickMntUsdcPool(pools = []) {
     })
     .filter((pool) => Number(pool.apy || 0) > 0)
     .sort((a, b) => Number(b.tvlUsd || 0) - Number(a.tvlUsd || 0))[0];
+}
+
+function pickTopLendingPool(pools = []) {
+  const lendingHints = ['aave', 'lendle', 'clearpool', 'layerbank', 'lending', 'credit'];
+  return pools
+    .filter((pool) => String(pool.chain || '').toLowerCase() === 'mantle')
+    .filter((pool) => Number(pool.apy || 0) > 0)
+    .filter((pool) => {
+      const project = String(pool.project || '').toLowerCase();
+      const meta = String(pool.poolMeta || '').toLowerCase();
+      return lendingHints.some((hint) => project.includes(hint) || meta.includes(hint));
+    })
+    .sort((a, b) => Number(b.apy || 0) - Number(a.apy || 0))[0];
+}
+
+function pickTopLpPool(pools = []) {
+  const lpHints = ['merchant moe', 'agni', 'fusionx', 'pairs', 'lp'];
+  return pools
+    .filter((pool) => String(pool.chain || '').toLowerCase() === 'mantle')
+    .filter((pool) => Number(pool.apy || 0) > 0)
+    .filter((pool) => {
+      const project = String(pool.project || '').toLowerCase();
+      const meta = String(pool.poolMeta || '').toLowerCase();
+      const symbol = String(pool.symbol || '').toLowerCase();
+      return lpHints.some((hint) => project.includes(hint) || meta.includes(hint))
+        || symbol.includes('-')
+        || symbol.includes('/');
+    })
+    .sort((a, b) => Number(b.apy || 0) - Number(a.apy || 0))[0];
 }
 
 function parseAddressFromPath(url, prefix) {
@@ -302,6 +369,18 @@ function protocolMetaForPool(pool) {
   return protocolRegistry.findByProjectName(pool?.project) || null;
 }
 
+function mantlePlacementLabel(pool) {
+  const meta = protocolMetaForPool(pool);
+  return meta?.mantleNative ? 'Mantle-native' : 'Available on Mantle';
+}
+
+function mantlePlacementExplanation(pool) {
+  const meta = protocolMetaForPool(pool);
+  return meta?.mantleNative
+    ? 'This protocol is part of the Mantle-native stack, so the fit is stronger for a Mantle-first pitch.'
+    : 'This route is deployed on Mantle, but it is not a Mantle-native product. LYRA should treat it as available on Mantle, not as core native infrastructure.';
+}
+
 function preferRegistryBackedPools(pools = [], limit = 3) {
   const registryBacked = pools.filter((pool) => protocolMetaForPool(pool));
   if (registryBacked.length >= limit) return registryBacked.slice(0, limit);
@@ -383,7 +462,7 @@ function renderProtocolCard(pool, index) {
       </div>
       <div class="lyra-protocol-metrics">
         <div class="lyra-metric">
-          <div class="lyra-metric-label">APY (annual)</div>
+          <div class="lyra-metric-label">APY</div>
           <div class="lyra-metric-value">${Number(pool?.apy || 0).toFixed(2)}%</div>
         </div>
         <div class="lyra-metric">
@@ -401,6 +480,156 @@ function renderProtocolCard(pool, index) {
         ${buildActionChip('Source', display.sourceUrl)}
       </div>
     </article>
+  `;
+}
+
+function renderBulletList(items = []) {
+  return items.filter(Boolean).map((line) => `<div>${escapeHtml(line)}</div>`).join('');
+}
+
+function renderComparisonResponse({
+  title,
+  answer,
+  left,
+  right,
+  verdict,
+  nextStep,
+  actions = [],
+  sources = [],
+  latestScan = null,
+  snapshot = null
+}) {
+  const confidence = getConfidenceData(latestScan, snapshot);
+  const sourceLinks = Array.from(new Map(
+    sources.filter(Boolean).map((source) => [source.url, source])
+  ).values());
+
+  return `
+    <div class="lyra-rich-response">
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">Comparison</div>
+        <div class="lyra-rich-copy">${escapeHtml(title)}</div>
+      </div>
+      <div class="lyra-rich-hero">${escapeHtml(answer)}</div>
+      <div class="lyra-compare-grid">
+        <article class="lyra-compare-card">
+          <div class="lyra-rich-label">Option A</div>
+          <div class="lyra-compare-title">${escapeHtml(left.title)}</div>
+          <div class="lyra-compare-copy">${escapeHtml(left.copy)}</div>
+          <div class="lyra-compare-points">${renderBulletList(left.points || [])}</div>
+          <div class="lyra-link-row">
+            ${(left.links || []).map((link) => buildActionChip(link.label, link.url, link.primary ? 'primary' : 'secondary')).join('')}
+          </div>
+        </article>
+        <article class="lyra-compare-card">
+          <div class="lyra-rich-label">Option B</div>
+          <div class="lyra-compare-title">${escapeHtml(right.title)}</div>
+          <div class="lyra-compare-copy">${escapeHtml(right.copy)}</div>
+          <div class="lyra-compare-points">${renderBulletList(right.points || [])}</div>
+          <div class="lyra-link-row">
+            ${(right.links || []).map((link) => buildActionChip(link.label, link.url, link.primary ? 'primary' : 'secondary')).join('')}
+          </div>
+        </article>
+      </div>
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">LYRA call</div>
+        <div class="lyra-rich-copy">${escapeHtml(verdict)}</div>
+      </div>
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">Next move</div>
+        <div class="lyra-rich-copy">${escapeHtml(nextStep)}</div>
+      </div>
+      <div class="lyra-action-row">
+        ${actions.map((action) => buildActionChip(action.label, action.url, action.primary ? 'primary' : 'secondary')).join('')}
+      </div>
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">Sources</div>
+        <div class="lyra-source-list">
+          ${sourceLinks.map((source) => buildActionChip(source.label, source.url)).join('')}
+        </div>
+      </div>
+      <details class="lyra-why">
+        <summary>How confident is this read?</summary>
+        <div class="lyra-why-copy">
+          <div class="lyra-rich-block">
+            <div class="lyra-rich-label">Confidence</div>
+            <div class="lyra-rich-copy">${escapeHtml(confidence.label)}${confidence.microcopy ? ` • ${escapeHtml(confidence.microcopy)}` : ''}</div>
+          </div>
+          <div class="lyra-rich-block">
+            <div class="lyra-rich-label">Scan note</div>
+            <div class="lyra-rich-copy">${escapeHtml(confidence.reasoning)}</div>
+          </div>
+        </div>
+      </details>
+    </div>
+  `;
+}
+
+function renderPlanResponse({
+  title,
+  answer,
+  steps = [],
+  evidence = [],
+  nextStep,
+  actions = [],
+  sources = [],
+  latestScan = null,
+  snapshot = null
+}) {
+  const confidence = getConfidenceData(latestScan, snapshot);
+  const sourceLinks = Array.from(new Map(
+    sources.filter(Boolean).map((source) => [source.url, source])
+  ).values());
+  return `
+    <div class="lyra-rich-response">
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">Plan</div>
+        <div class="lyra-rich-copy">${escapeHtml(title)}</div>
+      </div>
+      <div class="lyra-rich-hero">${escapeHtml(answer)}</div>
+      <div class="lyra-plan-grid">
+        ${steps.map((step, index) => `
+          <article class="lyra-plan-card">
+            <div class="lyra-rich-label">Step ${index + 1}</div>
+            <div class="lyra-compare-title">${escapeHtml(step.title)}</div>
+            <div class="lyra-compare-copy">${escapeHtml(step.copy)}</div>
+            <div class="lyra-compare-points">${renderBulletList(step.points || [])}</div>
+          </article>
+        `).join('')}
+      </div>
+      ${evidence.length ? `
+        <div class="lyra-rich-block">
+          <div class="lyra-rich-label">What I checked</div>
+          <div class="lyra-rich-copy">${renderBulletList(evidence)}</div>
+        </div>
+      ` : ''}
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">Next move</div>
+        <div class="lyra-rich-copy">${escapeHtml(nextStep)}</div>
+      </div>
+      <div class="lyra-action-row">
+        ${actions.map((action) => buildActionChip(action.label, action.url, action.primary ? 'primary' : 'secondary')).join('')}
+      </div>
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">Sources</div>
+        <div class="lyra-source-list">
+          ${sourceLinks.map((source) => buildActionChip(source.label, source.url)).join('')}
+        </div>
+      </div>
+      <details class="lyra-why">
+        <summary>How confident is this read?</summary>
+        <div class="lyra-why-copy">
+          <div class="lyra-rich-block">
+            <div class="lyra-rich-label">Confidence</div>
+            <div class="lyra-rich-copy">${escapeHtml(confidence.label)}${confidence.microcopy ? ` • ${escapeHtml(confidence.microcopy)}` : ''}</div>
+          </div>
+          <div class="lyra-rich-block">
+            <div class="lyra-rich-label">Scan note</div>
+            <div class="lyra-rich-copy">${escapeHtml(confidence.reasoning)}</div>
+          </div>
+        </div>
+      </details>
+    </div>
   `;
 }
 
@@ -430,203 +659,53 @@ function renderResearchResponse({
   const sourceLinks = Array.from(new Map(
     sources.filter(Boolean).map((source) => [source.url, source])
   ).values());
-  const showRouteMeta = pools.length > 0;
 
   return `
     <div class="lyra-rich-response">
       <div class="lyra-rich-block">
-        <div class="lyra-rich-label">Live thesis</div>
-        <div class="lyra-exec-title">${escapeHtml(insight)}</div>
-        <div class="lyra-exec-note">${escapeHtml(reasoning)}</div>
+        <div class="lyra-rich-label">Answer</div>
+        <div class="lyra-rich-copy">${escapeHtml(insight)}</div>
       </div>
-
-      ${showRouteMeta ? `
-        <div class="lyra-exec-summary-grid">
-          <div class="lyra-exec-stat">
-            <span class="lyra-metric-label">Scan type</span>
-            <strong>Live Mantle route read</strong>
-          </div>
-          <div class="lyra-exec-stat">
-            <span class="lyra-metric-label">APY basis</span>
-            <strong>Annualized, not monthly</strong>
-          </div>
-          <div class="lyra-exec-stat">
-            <span class="lyra-metric-label">Selection rule</span>
-            <strong>APY + TVL + route quality</strong>
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">Why this fits</div>
+        <div class="lyra-rich-copy">${escapeHtml(reasoning)}</div>
+      </div>
+      ${sourceLinks.length ? `
+        <div class="lyra-rich-block">
+          <div class="lyra-rich-label">Sources</div>
+          <div class="lyra-source-list">
+            ${sourceLinks.map((source) => buildActionChip(source.label, source.url)).join('')}
           </div>
         </div>
       ` : ''}
-
       ${pools.length ? `<div class="lyra-protocol-list">${pools.map((pool, index) => renderProtocolCard(pool, index)).join('')}</div>` : ''}
-
       ${extraEvidence.length ? `
         <div class="lyra-rich-block">
-          <div class="lyra-rich-label">Observed signals</div>
+          <div class="lyra-rich-label">What I checked</div>
           <div class="lyra-rich-copy">${extraEvidence.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>
         </div>
       ` : ''}
-
-      <div class="lyra-exec-summary-grid">
-        <div class="lyra-exec-stat">
-          <span class="lyra-metric-label">Mantle fit</span>
-          <strong>${escapeHtml(mantleContext)}</strong>
-        </div>
-        <div class="lyra-exec-stat">
-          <span class="lyra-metric-label">Next move</span>
-          <strong>${escapeHtml(nextStep)}</strong>
-        </div>
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">Mantle angle</div>
+        <div class="lyra-rich-copy">${escapeHtml(mantleContext)}</div>
       </div>
-
+      <div class="lyra-rich-block">
+        <div class="lyra-rich-label">Next move</div>
+        <div class="lyra-rich-copy">${escapeHtml(nextStep)}</div>
+      </div>
       <div class="lyra-action-row">
         ${dedupedActions.map((action) => buildActionChip(action.label, action.url, action.primary ? 'primary' : 'secondary')).join('')}
       </div>
-
       <details class="lyra-why">
-        <summary>View confidence and sources</summary>
+        <summary>How confident is this read?</summary>
         <div class="lyra-why-copy">
           <div class="lyra-rich-block">
             <div class="lyra-rich-label">Confidence</div>
-            <div class="lyra-rich-copy">${escapeHtml(confidence.label)}${confidence.microcopy ? ` - ${escapeHtml(confidence.microcopy)}` : ''}</div>
+            <div class="lyra-rich-copy">${escapeHtml(confidence.label)}${confidence.microcopy ? ` — ${escapeHtml(confidence.microcopy)}` : ''}</div>
           </div>
           <div class="lyra-rich-block">
-            <div class="lyra-rich-label">Why LYRA chose this</div>
+            <div class="lyra-rich-label">Scan note</div>
             <div class="lyra-rich-copy">${escapeHtml(confidence.reasoning)}</div>
-          </div>
-          <div class="lyra-rich-block">
-            <div class="lyra-rich-label">Live sources</div>
-            <div class="lyra-source-list">
-              ${sourceLinks.map((source) => buildActionChip(source.label, source.url)).join('')}
-            </div>
-          </div>
-        </div>
-      </details>
-    </div>
-  `;
-}
-
-function renderComparisonBoardResponse({
-  title,
-  summary,
-  liveNote,
-  left = {},
-  right = {},
-  verdict = {},
-  actions = [],
-  sources = []
-}) {
-  const sourceLinks = Array.from(new Map(
-    (sources || []).filter(Boolean).map((source) => [source.url, source])
-  ).values());
-
-  const actionLinks = Array.from(new Map(
-    (actions || []).filter(Boolean).map((action) => [`${action.label}:${action.url}`, action])
-  ).values());
-
-  const leftLinks = Array.isArray(left.links) ? left.links.filter(Boolean) : [];
-  const rightLinks = Array.isArray(right.links) ? right.links.filter(Boolean) : [];
-  const leftWeight = Math.max(0, Math.min(100, Number(left.weight ?? 50)));
-  const rightWeight = 100 - leftWeight;
-
-  return `
-    <div class="lyra-rich-response">
-      <div class="lyra-rich-block">
-        <div class="lyra-rich-label">Comparison board</div>
-        <div class="lyra-exec-title">${escapeHtml(title)}</div>
-        <div class="lyra-exec-note">${escapeHtml(summary)}</div>
-      </div>
-
-      <div class="lyra-rich-block" style="padding:12px 13px;border:1px solid rgba(20,230,164,0.16);border-radius:16px;background:rgba(20,230,164,0.05)">
-        <div class="lyra-rich-label">Live read</div>
-        <div class="lyra-rich-copy">${escapeHtml(liveNote)}</div>
-        <div style="margin-top:10px;display:grid;gap:8px;">
-          <div style="height:10px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,0.06);display:flex;">
-            <span style="width:${leftWeight}%;background:linear-gradient(90deg, rgba(61,130,255,0.95), rgba(61,130,255,0.55));"></span>
-            <span style="width:${rightWeight}%;background:linear-gradient(90deg, rgba(20,230,164,0.95), rgba(20,230,164,0.55));"></span>
-          </div>
-          <div class="lyra-exec-summary-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));">
-            <div class="lyra-exec-stat">
-              <span class="lyra-metric-label">Left side</span>
-              <strong>${escapeHtml(left.weightLabel || `${leftWeight}% weight`)}</strong>
-            </div>
-            <div class="lyra-exec-stat">
-              <span class="lyra-metric-label">Right side</span>
-              <strong>${escapeHtml(right.weightLabel || `${rightWeight}% weight`)}</strong>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;">
-        <article class="lyra-protocol-card" style="border-color:rgba(61,130,255,0.26);background:linear-gradient(180deg, rgba(17,23,33,0.96), rgba(11,17,27,0.98));">
-          <div class="lyra-protocol-head">
-            <div>
-              <div class="lyra-protocol-rank">${escapeHtml(left.kicker || 'Growth side')}</div>
-              <div class="lyra-protocol-name">${escapeHtml(left.name || '--')}</div>
-              <div class="lyra-protocol-category">${escapeHtml(left.subtitle || '')}</div>
-            </div>
-          </div>
-          <div class="lyra-protocol-metrics">
-            <div class="lyra-metric">
-              <div class="lyra-metric-label">Best for</div>
-              <div class="lyra-metric-value">${escapeHtml(left.bestFor || '')}</div>
-            </div>
-            <div class="lyra-metric">
-              <div class="lyra-metric-label">Posture</div>
-              <div class="lyra-metric-value">${escapeHtml(left.posture || '')}</div>
-            </div>
-            <div class="lyra-metric">
-              <div class="lyra-metric-label">Risk</div>
-              <div class="lyra-metric-value">${escapeHtml(left.risk || '')}</div>
-            </div>
-          </div>
-          ${leftLinks.length ? '<div class="lyra-link-row">' + leftLinks.map((link) => buildActionChip(link.label, link.url, link.primary ? 'primary' : 'secondary')).join('') + '</div>' : ''}
-        </article>
-
-        <article class="lyra-protocol-card" style="border-color:rgba(20,230,164,0.26);background:linear-gradient(180deg, rgba(17,23,33,0.96), rgba(11,17,27,0.98));">
-          <div class="lyra-protocol-head">
-            <div>
-              <div class="lyra-protocol-rank">${escapeHtml(right.kicker || 'Defensive side')}</div>
-              <div class="lyra-protocol-name">${escapeHtml(right.name || '--')}</div>
-              <div class="lyra-protocol-category">${escapeHtml(right.subtitle || '')}</div>
-            </div>
-          </div>
-          <div class="lyra-protocol-metrics">
-            <div class="lyra-metric">
-              <div class="lyra-metric-label">Best for</div>
-              <div class="lyra-metric-value">${escapeHtml(right.bestFor || '')}</div>
-            </div>
-            <div class="lyra-metric">
-              <div class="lyra-metric-label">Posture</div>
-              <div class="lyra-metric-value">${escapeHtml(right.posture || '')}</div>
-            </div>
-            <div class="lyra-metric">
-              <div class="lyra-metric-label">Risk</div>
-              <div class="lyra-metric-value">${escapeHtml(right.risk || '')}</div>
-            </div>
-          </div>
-          ${rightLinks.length ? '<div class="lyra-link-row">' + rightLinks.map((link) => buildActionChip(link.label, link.url, link.primary ? 'primary' : 'secondary')).join('') + '</div>' : ''}
-        </article>
-      </div>
-
-      <div class="lyra-rich-block" style="border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:12px 13px;background:rgba(255,255,255,0.02);">
-        <div class="lyra-rich-label">LYRA verdict</div>
-        <div class="lyra-exec-title" style="font-size:15px;">${escapeHtml(verdict.title || '')}</div>
-        <div class="lyra-exec-note">${escapeHtml(verdict.copy || '')}</div>
-      </div>
-
-      <div class="lyra-rich-block">
-        <div class="lyra-rich-label">What this means</div>
-        <div class="lyra-rich-copy">${escapeHtml(verdict.note || 'APY is annualized, so this board compares posture and live protocol context rather than a month-to-month payout forecast.')}</div>
-      </div>
-
-      ${actionLinks.length ? '<div class="lyra-action-row">' + actionLinks.map((action) => buildActionChip(action.label, action.url, action.primary ? 'primary' : 'secondary')).join('') + '</div>' : ''}
-
-      <details class="lyra-why">
-        <summary>Why did LYRA choose this?</summary>
-        <div class="lyra-why-copy">
-          <div class="lyra-rich-block">
-            <div class="lyra-rich-label">Evidence note</div>
-            <div class="lyra-rich-copy">This comparison is framed as Mantle-native posture and live context. It avoids pretending a monthly APY forecast is the same thing as a clear allocation decision.</div>
           </div>
           <div class="lyra-rich-block">
             <div class="lyra-rich-label">Data sources used</div>
@@ -721,6 +800,7 @@ function renderExecutionPanel({
                 </label>`
               : ''}
           </div>
+          <div class="lyra-exec-inline-status" data-execution-status></div>
           <div class="lyra-action-row lyra-exec-actions">
             <button class="lyra-chip-link primary" type="submit">${escapeHtml(panel.primaryLabel)}</button>
             <button class="lyra-chip-link secondary" type="button" data-lyra-action="faucet">Get Gas</button>
@@ -1089,13 +1169,13 @@ async function buildMarketTape() {
     fetchJson('https://api.coingecko.com/api/v3/simple/price?ids=mantle,ethereum,bitcoin,usd-coin&vs_currencies=usd&include_24hr_change=true'),
     fetchJson('https://api.llama.fi/v2/chains'),
     fetchJson('https://api.llama.fi/protocols'),
-    fetchJson('https://yields.llama.fi/pools')
+    getCachedMantlePools()
   ]);
 
   const priceData = prices.status === 'fulfilled' ? prices.value : {};
   const chainData = chains.status === 'fulfilled' ? chains.value : [];
   const protocolData = protocols.status === 'fulfilled' ? protocols.value : [];
-  const poolData = yields.status === 'fulfilled' ? yields.value?.data || [] : [];
+  const poolData = yields.status === 'fulfilled' ? yields.value || [] : [];
 
   const mantle = priceData.mantle || {};
   const eth = priceData.ethereum || {};
@@ -1105,7 +1185,10 @@ async function buildMarketTape() {
   const lendle = pickProtocol(protocolData, ['Lendle']);
   const agni = pickProtocol(protocolData, ['Agni Finance', 'Agni']);
   const merchantMoe = pickProtocol(protocolData, ['Merchant Moe']);
+  const aaveV3 = pickProtocol(protocolData, ['Aave V3', 'Aave']);
   const stablePool = pickStablePool(poolData);
+  const lendingPool = pickTopLendingPool(poolData);
+  const lpPool = pickTopLpPool(poolData);
   const mntUsdcPool = pickMntUsdcPool(poolData);
 
   const items = [
@@ -1127,6 +1210,9 @@ async function buildMarketTape() {
     },
     {
       label: `Mantle TVL ${formatUsd(mantleChain?.tvl, true)}`,
+      title: 'Mantle TVL',
+      value: formatUsd(mantleChain?.tvl, true),
+      detail: 'Network capital base',
       tone: 'neutral'
     },
     {
@@ -1138,12 +1224,39 @@ async function buildMarketTape() {
       tone: 'neutral'
     },
     {
-      label: `Merchant Moe liquidity ${formatUsd(merchantMoe?.tvl, true)}`,
+      label: `Merchant Moe liquidity ${formatUsd(protocolMantleTvl(merchantMoe), true)}`,
+      title: 'Merchant Moe Liquidity',
+      value: formatUsd(protocolMantleTvl(merchantMoe), true),
+      detail: 'Visible liquidity depth',
       tone: 'neutral'
     },
     {
       label: stablePool ? `Stablecoin route APY ${Number(stablePool.apy).toFixed(1)}%` : null,
+      title: stablePool ? 'Top Stable APY' : null,
+      value: stablePool ? `${Number(stablePool.apy).toFixed(1)}%` : null,
+      detail: stablePool ? `${stablePool.project || 'Mantle route'} ${stablePool.symbol || ''}`.trim() : null,
       tone: stablePool ? 'up' : 'neutral'
+    },
+    {
+      label: lendingPool ? `Top lending APY ${Number(lendingPool.apy).toFixed(1)}%` : null,
+      title: lendingPool ? 'Top Lending APY' : null,
+      value: lendingPool ? `${Number(lendingPool.apy).toFixed(1)}%` : null,
+      detail: lendingPool ? `${lendingPool.project || 'Mantle route'} ${lendingPool.symbol || ''}`.trim() : null,
+      tone: lendingPool ? 'up' : 'neutral'
+    },
+    {
+      label: lpPool ? `Top LP APY ${Number(lpPool.apy).toFixed(1)}%` : null,
+      title: lpPool ? 'Top LP APY' : null,
+      value: lpPool ? `${Number(lpPool.apy).toFixed(1)}%` : null,
+      detail: lpPool ? `${lpPool.project || 'Mantle LP'} ${lpPool.symbol || ''}`.trim() : null,
+      tone: lpPool ? 'up' : 'neutral'
+    },
+    {
+      label: aaveV3 ? `Aave V3 TVL ${formatUsd(protocolMantleTvl(aaveV3), true)}` : null,
+      title: aaveV3 ? 'Aave V3 TVL' : null,
+      value: aaveV3 ? formatUsd(protocolMantleTvl(aaveV3), true) : null,
+      detail: aaveV3 ? 'Protocol depth on Mantle' : null,
+      tone: 'neutral'
     },
     {
       label: mntUsdcPool ? `MNT/USDC route APY ${Number(mntUsdcPool.apy).toFixed(1)}%` : null,
@@ -1196,8 +1309,322 @@ async function buildPortfolioSnapshot(userAddress) {
   return snapshot;
 }
 
+function normalizeOpportunityPools(pools = []) {
+  const seen = new Set();
+  return pools.filter((pool) => {
+    const key = `${pool?.project || ''}:${pool?.symbol || ''}:${pool?.poolMeta || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function opportunityRiskExplanation(pool, display) {
+  const symbol = String(pool?.symbol || '').toUpperCase();
+  const category = String(display?.category || '').toLowerCase();
+  if (/USDC|USDT|USDE|DAI|USDY/.test(symbol)) {
+    return 'More defensive than directional routes, but yield can compress and protocol risk still matters.';
+  }
+  if (category.includes('lend') || category.includes('supply')) {
+    return 'Simpler route structure, but sustainability still depends on protocol health and utilization staying healthy.';
+  }
+  if (category.includes('lp') || category.includes('liquidity')) {
+    return 'Higher operational risk because returns depend on pair behavior, liquidity depth, and exit conditions.';
+  }
+  return 'More directional than pure stable routes, so users should expect more movement than a defensive income posture.';
+}
+
+function opportunityFitLabel(pool, display) {
+  const symbol = String(pool?.symbol || '').toUpperCase();
+  const category = String(display?.category || '').toLowerCase();
+  if (/USD/.test(symbol)) return 'Best for defensive stable deployment';
+  if (/ETH|METH/.test(symbol)) return 'Best for productive ETH-linked exposure';
+  if (category.includes('lend') || category.includes('supply')) return 'Best for simpler capital deployment';
+  if (category.includes('lp') || category.includes('liquidity')) return 'Best for higher-yield LP hunting';
+  return 'Best for monitored Mantle deployment';
+}
+
+function opportunityLensReason(lens, pool, display) {
+  switch (lens) {
+    case 'defensive':
+      return 'Ranks here because the route leans steadier than directional pairs and is easier to defend in a capital-preservation pitch.';
+    case 'yield':
+      return 'Ranks here because headline APY leads the visible Mantle board while TVL still clears the minimum durability filter.';
+    case 'simple':
+      return 'Ranks here because the route is easier to explain and enter than more complex LP-heavy choices.';
+    default:
+      return `Ranks here because ${display.name} combines usable APY with enough visible TVL to treat the route as actionable rather than decorative.`;
+  }
+}
+
+function opportunityReadiness(display) {
+  const supports = Array.isArray(display?.supports) ? display.supports : [];
+  if (supports.includes('supply') || supports.includes('lp')) {
+    return {
+      label: 'Bridge / swap prep available',
+      detail: 'LYRA can prepare the bridge and token conversion. Final deposit still happens on the protocol.'
+    };
+  }
+  if (supports.includes('swap')) {
+    return {
+      label: 'Swap prep available',
+      detail: 'LYRA can prepare the asset conversion, then hand off to the protocol path.'
+    };
+  }
+  return {
+    label: 'Research only',
+    detail: 'This route is sourced and ranked, but LYRA is not exposing direct entry prep for it yet.'
+  };
+}
+
+function buildOpportunityActions(display, readiness) {
+  const actions = [
+    {
+      type: 'prompt',
+      label: 'Ask LYRA why',
+      prompt: `Why is ${display.name} ranked as a Mantle opportunity right now?`,
+      variant: 'secondary'
+    },
+    display.appUrl ? {
+      type: 'link',
+      label: `Open ${display.name}`,
+      url: display.appUrl,
+      variant: 'primary'
+    } : null,
+    display.docsUrl ? {
+      type: 'link',
+      label: 'Docs',
+      url: display.docsUrl,
+      variant: 'secondary'
+    } : null,
+    readiness.label.startsWith('Bridge') ? {
+      type: 'action',
+      label: 'Prepare Bridge',
+      action: 'bridge',
+      variant: 'secondary'
+    } : null,
+    readiness.label.includes('swap') || readiness.label.includes('Swap') ? {
+      type: 'action',
+      label: 'Prepare Swap',
+      action: 'swap',
+      variant: 'secondary'
+    } : null
+  ].filter(Boolean);
+
+  return actions.slice(0, 4);
+}
+
+function mapOpportunityCard(pool, lens = 'overall') {
+  const display = getProtocolDisplay(pool);
+  const readiness = opportunityReadiness(display);
+  return {
+    protocol: display.name,
+    symbol: pool?.symbol || '--',
+    category: display.category,
+    network: 'Mantle',
+    placementLabel: mantlePlacementLabel(pool),
+    placementExplanation: mantlePlacementExplanation(pool),
+    apy: Number(pool?.apy || 0),
+    tvlUsd: Number(pool?.tvlUsd || 0),
+    fit: opportunityFitLabel(pool, display),
+    riskLevel: display.risk,
+    riskExplanation: opportunityRiskExplanation(pool, display),
+    reason: opportunityLensReason(lens, pool, display),
+    readiness,
+    links: [
+      display.appUrl ? { label: 'Protocol', url: display.appUrl } : null,
+      display.docsUrl ? { label: 'Docs', url: display.docsUrl } : null,
+      display.sourceUrl ? { label: 'Source', url: display.sourceUrl } : null
+    ].filter(Boolean),
+    actions: buildOpportunityActions(display, readiness)
+  };
+}
+
+function pickOpportunityByLens(pools = [], lens = 'overall') {
+  if (!pools.length) return null;
+  if (lens === 'yield') return pools.slice().sort((a, b) => Number(b.apy || 0) - Number(a.apy || 0))[0] || null;
+  if (lens === 'defensive') {
+    return pools.find((pool) => /USDC|USDT|USDE|DAI|USDY/i.test(String(pool?.symbol || '')))
+      || pools.find((pool) => String(getProtocolDisplay(pool).risk).toLowerCase() === 'lower')
+      || null;
+  }
+  if (lens === 'simple') {
+    return pools.find((pool) => {
+      const supports = getProtocolDisplay(pool).supports || [];
+      return supports.includes('supply');
+    }) || pools.find((pool) => String(getProtocolDisplay(pool).risk).toLowerCase() === 'lower') || null;
+  }
+  return pools[0] || null;
+}
+
+function pickUniqueOpportunityByLens(pools = [], lens = 'overall', used = new Set()) {
+  const ordered = lens === 'yield'
+    ? pools.slice().sort((a, b) => Number(b.apy || 0) - Number(a.apy || 0))
+    : lens === 'defensive'
+      ? [
+          ...pools.filter((pool) => /USDC|USDT|USDE|DAI|USDY/i.test(String(pool?.symbol || ''))),
+          ...pools.filter((pool) => String(getProtocolDisplay(pool).risk).toLowerCase() === 'lower'),
+          ...pools
+        ]
+      : lens === 'simple'
+        ? [
+            ...pools.filter((pool) => {
+              const supports = getProtocolDisplay(pool).supports || [];
+              return supports.includes('supply');
+            }),
+            ...pools.filter((pool) => String(getProtocolDisplay(pool).risk).toLowerCase() === 'lower'),
+            ...pools
+          ]
+        : pools;
+
+  for (const pool of ordered) {
+    const key = `${pool?.project || ''}:${pool?.symbol || ''}:${pool?.poolMeta || ''}`;
+    if (used.has(key)) continue;
+    used.add(key);
+    return pool;
+  }
+  return null;
+}
+
+function buildOpportunityHighlight(label, pool, lens) {
+  if (!pool) return null;
+  const display = getProtocolDisplay(pool);
+  return {
+    label,
+    protocol: display.name,
+    symbol: pool?.symbol || '--',
+    placementLabel: mantlePlacementLabel(pool),
+    apy: Number(pool?.apy || 0),
+    tvlUsd: Number(pool?.tvlUsd || 0),
+    reason: opportunityLensReason(lens, pool, display)
+  };
+}
+
+function buildFallbackMantlePools() {
+  return [
+    {
+      project: 'Clearpool',
+      symbol: 'USDC',
+      poolMeta: 'Credit / Lending',
+      chain: 'Mantle',
+      apy: 12.52,
+      tvlUsd: 13058
+    },
+    {
+      project: 'Aave V3',
+      symbol: 'USDC',
+      poolMeta: 'Lending',
+      chain: 'Mantle',
+      apy: 6.05,
+      tvlUsd: 1600000
+    },
+    {
+      project: 'Merchant Moe',
+      symbol: 'USDT-ETH',
+      poolMeta: 'LP',
+      chain: 'Mantle',
+      apy: 29.74,
+      tvlUsd: 619400
+    },
+    {
+      project: 'Lendle',
+      symbol: 'GHO',
+      poolMeta: 'Lending',
+      chain: 'Mantle',
+      apy: 6.51,
+      tvlUsd: 4000000
+    }
+  ];
+}
+
+async function buildLiveOpportunitiesPayload() {
+  const livePools = await getCachedMantlePools();
+  const mantlePools = livePools.length ? livePools : buildFallbackMantlePools();
+
+  const used = new Set();
+  const bestOverall = pickUniqueOpportunityByLens(mantlePools, 'overall', used) || mantlePools[0] || null;
+  const bestDefensive = pickUniqueOpportunityByLens(mantlePools, 'defensive', used) || pickOpportunityByLens(mantlePools, 'defensive') || bestOverall;
+  const bestYield = pickUniqueOpportunityByLens(mantlePools, 'yield', used) || pickOpportunityByLens(mantlePools, 'yield') || bestOverall;
+  const bestSimple = pickUniqueOpportunityByLens(mantlePools, 'simple', used) || pickOpportunityByLens(mantlePools, 'simple') || bestOverall;
+
+  const highlights = [
+    buildOpportunityHighlight('Best Overall', bestOverall, 'overall'),
+    buildOpportunityHighlight('Best Defensive', bestDefensive, 'defensive'),
+    buildOpportunityHighlight('Best Yield', bestYield, 'yield'),
+    buildOpportunityHighlight('Best Simple Deploy', bestSimple, 'simple')
+  ].filter(Boolean);
+
+  const cards = [
+    { pool: bestOverall, lens: 'overall' },
+    { pool: bestDefensive, lens: 'defensive' },
+    { pool: bestYield, lens: 'yield' },
+    { pool: bestSimple, lens: 'simple' }
+  ]
+    .filter((entry) => entry.pool)
+    .map((entry, index) => ({
+      rank: index + 1,
+      ...mapOpportunityCard(entry.pool, entry.lens)
+    }));
+
+  const topCard = cards[0] || null;
+  const mantleNativeRoutes = mantlePools.filter((pool) => mantlePlacementLabel(pool) === 'Mantle-native').length;
+  const availableRoutes = Math.max(mantlePools.length - mantleNativeRoutes, 0);
+
+  return {
+    ok: true,
+    title: 'Live Opportunities',
+    summary: livePools.length
+      ? 'Ranked routes available on Mantle using APY, TVL durability, route clarity, and action readiness. LYRA labels what is Mantle-native versus what is simply available on Mantle. APY is annualized, not monthly.'
+      : 'Live Mantle pool data is thin right now, so LYRA is showing a curated Mantle featured board from the last known good routes. APY is annualized, not monthly.',
+    checkedAt: new Date().toISOString(),
+    highlights,
+    cards,
+    stats: {
+      visibleRoutes: livePools.length || mantlePools.length,
+      mantleNativeRoutes,
+      availableRoutes
+    },
+    methodology: [
+      'Available on Mantle routes included',
+      'Mantle-native versus available-on-Mantle labeled separately',
+      'APY is annualized, not monthly',
+      'Frozen routes removed',
+      'TVL used as first durability check',
+      'Action readiness shown separately from research quality'
+    ],
+    recommendation: topCard ? {
+      title: `${topCard.protocol} is the strongest visible route on Mantle right now.`,
+      copy: `Start there only if the asset and risk posture match the user. If not, use the defensive route first and let LYRA prepare the bridge or swap path instead of chasing the loudest APY.`
+    } : null,
+    confidence: livePools.length ? 'Live Mantle route board' : 'Cached Mantle route board',
+    sources: 'Sources: DefiLlama, protocol sources'
+  };
+}
+
+async function handleLiveOpportunities(req, res) {
+  try {
+    const payload = await buildLiveOpportunitiesPayload();
+    return sendJson(res, 200, payload);
+  } catch (error) {
+    return sendJson(res, 200, {
+      ok: false,
+      title: 'Live Opportunities',
+      summary: 'Live Mantle opportunity data is temporarily unavailable.',
+      checkedAt: new Date().toISOString(),
+      highlights: [],
+      cards: [],
+      methodology: [],
+      recommendation: null,
+      confidence: 'Live route scan unavailable',
+      sources: 'Sources: DefiLlama, protocol sources',
+      error: error.message
+    });
+  }
+}
+
 async function buildAlchemyChainFallback(address) {
-  const apiKey = process.env.ALCHEMY_API_KEY || 'wcxam6IKayZFOfrN9RShw';
+  const apiKey = process.env.ALCHEMY_API_KEY || null;
+  if (!apiKey) return [];
   const results = await Promise.allSettled(
     ALCHEMY_VISIBILITY_NETWORKS.map(async ({ network, label }) => {
       const service = new AlchemyService({ apiKey, network });
@@ -1552,10 +1979,10 @@ async function buildDirectLyraResponse(message, snapshot, latestScan = null) {
   const bridge = protocolRegistry.getById('mantle-bridge');
   const faucet = protocolRegistry.getById('mantle-faucet');
 
-  if (/^(hi|hello|hey|yo|good morning|good afternoon|good evening)\b/i.test(lower)) {
+  if (/^(hi|hello|hey|yo|gm|good morning|good afternoon|good evening)\b/i.test(lower)) {
     return {
       text: snapshot
-        ? 'Hello.\n\nWallet context is available.\nAsk about Mantle opportunities, wallet behavior, or prepare a bridge or send.'
+        ? 'Hello.\n\nWallet context is available. Ask for opportunities, wallet behavior, or prepare a bridge, swap, or send.'
         : 'Hello.\n\nAsk about Mantle opportunities, protocol comparisons, or connect a wallet for wallet analysis and execution.',
       reasoning: 'Greeting response.',
       sources: [],
@@ -1563,16 +1990,156 @@ async function buildDirectLyraResponse(message, snapshot, latestScan = null) {
     };
   }
 
-  const poolsResponse = await fetchJson('https://yields.llama.fi/pools').catch(() => ({ data: [] }));
-  const pools = poolsResponse?.data || [];
-  const mantlePools = pools
-    .filter((pool) => String(pool.chain || '').toLowerCase() === 'mantle')
-    .filter((pool) => Number(pool.tvlUsd || 0) > 1000)
-    .filter((pool) => !/frozen/i.test(String(pool.poolMeta || '')))
-    .filter((pool) => Number(pool.apy || 0) > 0)
-    .sort((a, b) => Number(b.apy || 0) - Number(a.apy || 0));
+  if (/^(what can you do|what do you do|who are you|tell me about lyra|introduce yourself|help|how does this work|how does lyra work|what is lyra|give me an overview|give me a quick intro)\b/i.test(lower)) {
+    return {
+      text: snapshot
+        ? 'LYRA compares Mantle opportunities, explains wallet activity in plain language, and prepares bridge, swap, or send flows when the action is supported.'
+        : 'LYRA compares Mantle opportunities, explains wallet activity in plain language, and prepares bridge, swap, or send flows when the action is supported. Connect a wallet for wallet-aware answers.',
+      reasoning: 'Fast intro response.',
+      sources: [],
+      actions: [
+        { label: 'Show opportunities', url: 'lyra-action:opportunities', primary: true },
+        { label: 'Prepare Bridge', url: 'lyra-action:bridge', primary: false }
+      ]
+    };
+  }
 
-  if (lower.includes('opportunit') || lower.includes('strongest mantle opportunit') || lower.includes('top yield opportunit')) {
+  const mantlePools = await getCachedMantlePools();
+
+  if (lower.includes('2-step mantle strategy') || lower.includes('turn my current wallet')) {
+    const topRoutes = preferRegistryBackedPools(mantlePools, 2);
+    const lead = topRoutes[0];
+    const leadDisplay = lead ? getProtocolDisplay(lead) : null;
+    const visibleHolding = balances[0];
+    const dominantNetwork = latestScan?.dominantChain || snapshot?.summary?.networkLabel || 'Mantle context still building';
+    return {
+      text: leadDisplay
+        ? `${leadDisplay.name} is the clearest first route right now, but the wallet should stay simple: fund Mantle cleanly, then deploy only into one visible route.`
+        : 'The cleanest 2-step strategy right now is to fund Mantle first, then deploy only after a strong live route is visible.',
+      html: renderPlanResponse({
+        title: 'Two-step Mantle plan',
+        answer: leadDisplay
+          ? `${leadDisplay.name} is the clearest first route right now, but the wallet should stay simple: fund Mantle cleanly, then deploy only into one visible route.`
+          : 'The cleanest 2-step strategy right now is to fund Mantle first, then deploy only after a strong live route is visible.',
+        steps: [
+          {
+            title: 'Make Mantle the funded base',
+            copy: 'Keep the first move simple: make sure the wallet has usable Mantle-side gas and deployable capital before chasing a route.',
+            points: [
+              `Dominant visible network: ${dominantNetwork}`,
+              totalValue > 0 ? `Visible wallet value: ${formatUsd(totalValue)}` : 'Visible funded value is still limited.',
+              visibleHolding ? `Largest visible holding: ${visibleHolding.symbol}` : 'No clear lead holding yet.'
+            ]
+          },
+          {
+            title: leadDisplay ? `Deploy into ${leadDisplay.name}` : 'Deploy into the strongest live route',
+            copy: lead
+              ? `${leadDisplay.name} currently clears the strongest live filter in this scan.`
+              : 'Only deploy once the top route is visible and liquid enough to defend.',
+            points: lead
+              ? [
+                  `Visible route: ${leadDisplay.name} — ${lead.symbol}`,
+                  `APY: ${Number(lead.apy || 0).toFixed(2)}%`,
+                  `TVL: ${formatUsd(lead.tvlUsd, true)}`
+                ]
+              : ['No live route is visible enough right now to treat as the clear first deployment.']
+          }
+        ],
+        evidence: lead
+          ? [
+              `${leadDisplay.name} is leading the visible Mantle board after APY and TVL filtering.`,
+              'Frozen pools and weak-liquidity routes were removed from the shortlist.'
+            ]
+          : ['The live route shortlist is too thin right now for a strong first deployment call.'],
+        nextStep: leadDisplay
+          ? `Use one route only: open ${leadDisplay.name}, review the pair, and deploy only if the capital size actually justifies the move.`
+          : 'Wait for a clearer live route, or ask LYRA to rank only stable or only defensive opportunities.',
+        actions: [
+          leadDisplay?.appUrl ? { label: `Open ${leadDisplay.name}`, url: leadDisplay.appUrl, primary: true } : null,
+          { label: 'Prepare Bridge', url: 'lyra-action:bridge', primary: false }
+        ].filter(Boolean),
+        sources: [
+          { label: 'DefiLlama Yields', url: 'https://defillama.com/yields' },
+          leadDisplay?.sourceUrl ? { label: `${leadDisplay.name} source`, url: leadDisplay.sourceUrl } : null,
+          leadDisplay?.docsUrl ? { label: `${leadDisplay.name} docs`, url: leadDisplay.docsUrl } : null
+        ].filter(Boolean),
+        latestScan,
+        snapshot
+      }),
+      reasoning: 'The strategy path was reduced to one clean deployment route instead of a long multi-step guess.',
+      sources: [
+        { label: 'DefiLlama Yields', url: 'https://defillama.com/yields' },
+        leadDisplay?.sourceUrl ? { label: `${leadDisplay.name} source`, url: leadDisplay.sourceUrl } : null
+      ].filter(Boolean),
+      actions: [
+        leadDisplay?.appUrl ? { label: `Open ${leadDisplay.name}`, url: leadDisplay.appUrl, primary: true } : null
+      ].filter(Boolean)
+    };
+  }
+
+  if (lower.includes('meth') && lower.includes('usdy')) {
+    const mEth = protocolRegistry.getById('meth');
+    return {
+      text: 'mETH is the better fit when the user still wants ETH-linked upside. USDY is the cleaner fit when defense and steadier income matter more than upside.',
+      html: renderComparisonResponse({
+        title: 'mETH vs USDY on Mantle',
+        answer: 'mETH is the better fit when the user still wants ETH-linked upside. USDY is the cleaner fit when defense and steadier income matter more than upside.',
+        left: {
+          title: 'mETH',
+          copy: 'Best when the user wants productive ETH exposure without fully stepping away from ETH-linked upside.',
+          points: [
+            'Keeps ETH-linked participation in the mix.',
+            'Fits a more directional defensive posture.',
+            'Cleaner when the user still wants upside, not pure protection.'
+          ],
+          links: [
+            mEth?.appUrl ? { label: 'Open mETH', url: mEth.appUrl, primary: true } : null,
+            mEth?.docsUrl ? { label: 'mETH docs', url: mEth.docsUrl } : null
+          ].filter(Boolean)
+        },
+        right: {
+          title: 'USDY',
+          copy: 'Best when the user wants steadier income posture and a more defensive story than ETH-linked exposure can offer.',
+          points: [
+            'Cleaner capital-preservation angle.',
+            'Less dependent on ETH direction.',
+            'Easier to explain when the goal is defensive income.'
+          ],
+          links: [
+            { label: 'USDY source', url: 'https://ondo.finance/' },
+            { label: 'DefiLlama Yields', url: 'https://defillama.com/yields' }
+          ]
+        },
+        verdict: 'Use mETH when upside still matters. Use USDY when the brief is genuinely defensive and the user wants a steadier income posture.',
+        nextStep: 'Decide whether this is still an upside-leaning wallet or a defense-first wallet. That choice should drive the allocation before any deployment happens.',
+        actions: [
+          mEth?.appUrl ? { label: 'Open mETH', url: mEth.appUrl, primary: true } : null,
+          { label: 'Prepare Bridge', url: 'lyra-action:bridge', primary: false }
+        ].filter(Boolean),
+        sources: [
+          mEth?.sourceUrl ? { label: 'mETH source', url: mEth.sourceUrl } : null,
+          mEth?.docsUrl ? { label: 'mETH docs', url: mEth.docsUrl } : null,
+          { label: 'USDY source', url: 'https://ondo.finance/' },
+          { label: 'DefiLlama Yields', url: 'https://defillama.com/yields' }
+        ].filter(Boolean),
+        latestScan,
+        snapshot
+      }),
+      reasoning: 'The comparison was framed as posture selection, not as a fake precise allocation call.',
+      sources: [
+        mEth?.sourceUrl ? { label: 'mETH source', url: mEth.sourceUrl } : null,
+        { label: 'USDY source', url: 'https://ondo.finance/' }
+      ].filter(Boolean),
+      actions: []
+    };
+  }
+
+  if (
+    lower.includes('top yield opportunit')
+    || lower.includes('top earning opportunit')
+    || /strongest\s+mantle\s+opportunit/i.test(lower)
+    || /mantle\s+opportunit.*right\s+now/i.test(lower)
+  ) {
     const top = preferRegistryBackedPools(mantlePools, 3);
     if (!top.length) return { text: 'I could not fetch live Mantle yield routes right now. Try again in a moment.' };
     const lead = getProtocolDisplay(top[0]);
@@ -1613,66 +2180,7 @@ async function buildDirectLyraResponse(message, snapshot, latestScan = null) {
     };
   }
 
-  if (((/\bmeth\b|\bmth\b|\bmtm\b/i.test(lower)) && /\busdy\b|\busd\b/i.test(lower)) || (lower.includes('defensive') && lower.includes('allocation') && lower.includes('mantle'))) {
-    const methMeta = protocolRegistry.findByProjectName('mETH') || protocolRegistry.getById('meth');
-    const usdySource = 'https://ondo.finance/';
-    return {
-      text: 'I can compare them visually. APY is annualized here, so the board below compares posture and live context rather than month-to-month payouts.',
-      html: renderComparisonBoardResponse({
-        title: 'mETH vs USDY on Mantle',
-        summary: 'Productive ETH exposure versus steadier defensive income. Use this board to read the allocation story, not to guess a monthly payout.',
-        liveNote: 'mETH leans toward measured upside and future ETH participation. USDY leans toward capital preservation and a calmer income posture. If you want both, frame it as a split rather than a single winner.',
-        left: {
-          kicker: 'Growth side',
-          name: 'mETH',
-          subtitle: 'Productive ETH exposure on Mantle',
-          bestFor: 'Measured upside',
-          posture: 'Keep ETH-linked upside',
-          risk: 'Higher volatility',
-          weight: 58,
-          weightLabel: 'More upside exposure',
-          links: [
-            { label: 'Open mETH', url: methMeta?.appUrl || 'https://meth.mantle.xyz/', primary: true },
-            { label: 'mETH docs', url: methMeta?.docsUrl || 'https://www.mantle.xyz/meth' }
-          ]
-        },
-        right: {
-          kicker: 'Defensive side',
-          name: 'USDY',
-          subtitle: 'Stable-value yield posture',
-          bestFor: 'Capital preservation',
-          posture: 'Defensive income',
-          risk: 'Lower volatility',
-          weight: 42,
-          weightLabel: 'More stability',
-          links: [
-            { label: 'Open USDY', url: usdySource, primary: true },
-            { label: 'Ondo source', url: usdySource }
-          ]
-        },
-        verdict: {
-          title: 'mETH is the clearer upside call. USDY is the clearer defensive call.',
-          copy: 'If the story is productive ETH exposure, lead with mETH. If the story is capital preservation, lead with USDY. If the user wants balance, show a split and explain why the mix matters.'
-        },
-        note: 'APY is annualized, so compare posture, live protocol context, and route quality rather than treating the label as a monthly return forecast.',
-        sources: [
-          { label: 'mETH source', url: methMeta?.sourceUrl || 'https://rewards.mantle.xyz/methamorphosis' },
-          { label: 'mETH docs', url: methMeta?.docsUrl || 'https://www.mantle.xyz/meth' },
-          { label: 'USDY source', url: usdySource },
-          { label: 'DefiLlama Yields', url: 'https://defillama.com/yields' }
-        ],
-        actions: []
-      }),
-      reasoning: 'This is a posture comparison with live links, not a generic AI paragraph.',
-      sources: [
-        { label: 'mETH source', url: methMeta?.sourceUrl || 'https://rewards.mantle.xyz/methamorphosis' },
-        { label: 'USDY source', url: usdySource }
-      ],
-      actions: []
-    };
-  }
-
-  if ((lower.includes('compare') && (lower.includes('apy') || lower.includes('yield'))) || lower.includes('best apy')) {
+  if (lower.includes('best apy')) {
     const top = preferRegistryBackedPools(mantlePools, 4);
     if (!top.length) return { text: 'I could not fetch Mantle APY data right now.' };
     return {
@@ -1817,15 +2325,13 @@ async function buildDirectLyraResponse(message, snapshot, latestScan = null) {
   if (lower.includes('bridge')) {
     const parsedIntent = extractAmountAndSymbol(message);
     const actionVerb = 'bridge';
-    const goingToSepolia = /to\s+sepolia|into\s+sepolia|onto\s+sepolia/i.test(message);
-    const goingToMantle = /to\s+mantle|into\s+mantle|onto\s+mantle/i.test(message);
-    const comingFromMantle = /from\s+mantle/i.test(message);
-    const requestedFrom = comingFromMantle
+    const goingToMantleSepolia = /to\s+mantle\s+sepolia|into\s+mantle\s+sepolia|onto\s+mantle\s+sepolia/i.test(message);
+    const goingToSepolia = /to\s+sepolia|into\s+sepolia|onto\s+sepolia/i.test(message) && !goingToMantleSepolia;
+    const comingFromMantleSepolia = /from\s+mantle\s+sepolia/i.test(message);
+    const requestedFrom = (comingFromMantleSepolia || goingToSepolia)
       ? 'Mantle Sepolia'
-      : (goingToSepolia ? 'Mantle Sepolia' : 'Sepolia');
-    const requestedTo = goingToSepolia
-      ? 'Sepolia'
-      : (goingToMantle ? 'Mantle Sepolia' : 'Mantle Sepolia');
+      : 'Sepolia';
+    const requestedTo = goingToSepolia ? 'Sepolia' : 'Mantle Sepolia';
     const requestedToToken = parsedIntent.tokenSymbol || 'MNT';
 
     if (!parsedIntent.amount) {
@@ -1864,9 +2370,11 @@ async function buildDirectLyraResponse(message, snapshot, latestScan = null) {
   if (lower.includes('send')) {
     const parsedIntent = extractAmountAndSymbol(message);
     const addressMatch = message.match(/0x[a-fA-F0-9]{40}/);
-    const requestedNetwork = /mainnet/i.test(message)
+    const requestedNetwork = /mantle\s+mainnet/i.test(message)
       ? 'Mantle Mainnet'
-      : /(?:^|\s)sepolia(?:\s|$)/i.test(message)
+      : /mantle\s+sepolia/i.test(message)
+        ? 'Mantle Sepolia'
+        : /(?:^|\s)sepolia(?:\s|$)/i.test(message)
         ? 'Sepolia'
         : 'Mantle Sepolia';
     return {
@@ -1989,7 +2497,7 @@ async function handleChat(req, res) {
     }
 
     const classification = classifyLyraPrompt(message);
-    const fastPrompt = /^(hi|hey|hello|yo|gm|good morning|good evening)[\s!.]*$/i.test(message.trim())
+    const fastPrompt = /^(hi|hey|hello|yo|gm|good morning|good afternoon|good evening|what can you do|what do you do|who are you|tell me about lyra|introduce yourself|help|how does this work|how does lyra work|what is lyra|give me an overview|give me a quick intro)[\s!.?]*$/i.test(message.trim())
       || /bridge|swap|send|yield|apy|opportunit|compare|merchant|agni|lendle|idle|deploy/i.test(message);
     if (!walletAddress) {
       if (isWalletDependentIntent(classification)) {
@@ -2286,7 +2794,7 @@ function serveStatic(req, res) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+export async function handleLyraRequest(req, res, { serveStaticAssets = true } = {}) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
@@ -2346,9 +2854,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  serveStatic(req, res);
+  if (req.method === 'GET' && req.url === '/api/opportunities') {
+    await handleLiveOpportunities(req, res);
+    return;
+  }
+
+  if (serveStaticAssets) {
+    serveStatic(req, res);
+  } else {
+    sendJson(res, 404, { error: 'Not found' });
+  }
+}
+
+const server = http.createServer((req, res) => {
+  handleLyraRequest(req, res, { serveStaticAssets: true }).catch((error) => {
+    console.error('LYRA request handler failed:', error);
+    if (!res.headersSent) {
+      sendJson(res, 500, { error: error.message || 'Internal server error' });
+    }
+  });
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`LYRA server running at http://${HOST}:${PORT}`);
-});
+const isDirectExecution = process.argv[1] && path.resolve(process.argv[1]) === __filename;
+if (isDirectExecution) {
+  server.listen(PORT, HOST, () => {
+    console.log(`LYRA server running at http://${HOST}:${PORT}`);
+  });
+}
