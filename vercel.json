@@ -1,5 +1,19 @@
 {
   "version": 2,
+  "functions": {
+    "server.js": {
+      "includeFiles": [
+        "index.html",
+        "lyra.html",
+        "app.js",
+        "wallet-modal-bundle.js",
+        "lyra-favicon-circle.png",
+        "lyra-logo-robot.png",
+        "glass-user-icon.jpg",
+        "hf_20260503_154626_8ee11481-de33-4de5-a830-c5cb29cd6637.mp4"
+      ]
+    }
+  },
   "rewrites": [
     { "source": "/scan-wallet", "destination": "/api/scan-wallet" },
     { "source": "/wallet-analysis/:path*", "destination": "/api/wallet-analysis/:path*" }
