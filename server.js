@@ -2866,6 +2866,10 @@ export async function handleLyraRequest(req, res, { serveStaticAssets = true } =
   }
 }
 
+export default async function vercelHandler(req, res) {
+  return handleLyraRequest(req, res, { serveStaticAssets: true });
+}
+
 const server = http.createServer((req, res) => {
   handleLyraRequest(req, res, { serveStaticAssets: true }).catch((error) => {
     console.error('LYRA request handler failed:', error);
