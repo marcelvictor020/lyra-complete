@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DatabaseSync } from 'node:sqlite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +10,7 @@ let insertScanStmt = null;
 let getLatestScanStmt = null;
 let insertDecisionStmt = null;
 let getRecentDecisionsStmt = null;
+let DatabaseSync = null;
 
 const memoryStore = {
   walletScans: [],
@@ -103,6 +103,7 @@ function initializeSqlite() {
 }
 
 try {
+  ({ DatabaseSync } = await import('node:sqlite'));
   initializeSqlite();
 } catch (error) {
   console.warn('LYRA database fallback enabled:', error?.message || error);
